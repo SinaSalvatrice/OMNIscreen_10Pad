@@ -5,6 +5,7 @@ BOARD = GENERIC_RP_RP2040
 # Quantum Painter stays disabled until native hardware SPI is confirmed.
 QUANTUM_PAINTER_ENABLE = no
 SPI_DRIVER_REQUIRED = yes
+ANALOG_DRIVER_REQUIRED = yes
 TAP_DANCE_ENABLE = yes
 
 # Matrix and EC11 QMK modules remain enabled in keyboard.json.
