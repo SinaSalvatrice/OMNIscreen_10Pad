@@ -17,6 +17,12 @@ static bool cc_menu_view = false;
 static bool cc_help_view = false;
 static bool cc_color_view = false;
 static bool cc_matrix_test_view = false;
+// 0..1023 or 0..4095 depending on QMK ADC configuration; normalize at runtime.
+static uint16_t cc_slider_raw = 0;
+static uint16_t cc_slider_pct = 0;
+static uint16_t cc_slider_last_sample = 0;
+static uint16_t cc_slider_last_drawn = UINT16_MAX;
+static bool cc_slider_valid = false;
 // Physical switch status is tracked separately from QMK Tap Dance.
 static bool cc_matrix_down[CC_KEY_COUNT] = {false};
 static uint16_t cc_matrix_changed = 0;
@@ -206,6 +212,8 @@ static void cc_matrix_test_enter(void) {
     for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) cc_matrix_down[i] = false;
     cc_matrix_changed = (1u << CC_KEY_COUNT) - 1u;
     cc_matrix_full_redraw = true;
+    cc_slider_last_drawn = UINT16_MAX;
+    cc_slider_last_sample = timer_read() - 60;
     cc_dirty = true;
 }
 
@@ -289,14 +297,31 @@ static void cc_matrix_test_status(void) {
     }
 }
 
+// Slider lives in the left information panel, away from the ten key tiles.
+static void cc_matrix_slider_widget(void) {
+    // Preserve the title above (ends at y=69) and status panel below (starts y=115).
+    lcd_fill(9, 78, 105, 37, 0x2186);
+    cc_draw_text(13, 80, "SLIDER", 1, C_CYAN);
+    lcd_fill(13, 95, 97, 8, 0x39C7);
+    const uint16_t fill = (uint16_t)(((uint32_t)cc_slider_pct * 97u) / 100u);
+    if (fill) lcd_fill(13, 95, fill, 8, cc_slider_valid ? C_GREEN : C_RED);
+    char value[12];
+    if (cc_slider_valid) {
+        (void)snprintf(value, sizeof(value), "%3u%%", (unsigned)cc_slider_pct);
+    } else {
+        (void)snprintf(value, sizeof(value), "ADC ERR");
+    }
+    cc_draw_text(13, 106, value, 1, C_WHITE);
+    cc_slider_last_drawn = cc_slider_pct;
+}
+
 static void cc_matrix_test_screen(void) {
     if (cc_matrix_full_redraw) {
         cc_background();
         lcd_fill(7, 33, 109, 171, 0x2186);
         lcd_fill(7, 33, 109, 4, C_CYAN);
         cc_draw_text(13, 55, "MATRIX", 2, C_WHITE);
-        cc_draw_text(13, 87, "4-4-2", 1, C_CYAN);
-        cc_draw_text(13, 102, "KEY TEST", 1, C_WHITE);
+        cc_draw_text(13, 72, "4-4-2", 1, C_CYAN);
         lcd_fill(0, 216, LCD_W, 24, 0x18C7);
         cc_draw_text(7, 225, "K0 1X EXIT 3X TOGGLE / PUSH EXIT", 1, C_CYAN);
         cc_matrix_changed = (1u << CC_KEY_COUNT) - 1u;
@@ -306,6 +331,9 @@ static void cc_matrix_test_screen(void) {
     cc_matrix_changed = 0;
     for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
         if (changed & (1u << i)) cc_matrix_key_tile(i);
+    }
+    if (cc_slider_last_drawn != cc_slider_pct || !cc_slider_valid) {
+        cc_matrix_slider_widget();
     }
     cc_matrix_test_status();
 }
