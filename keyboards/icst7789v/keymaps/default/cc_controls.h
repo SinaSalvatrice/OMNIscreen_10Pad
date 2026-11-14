@@ -203,8 +203,8 @@ void housekeeping_task_user(void) {
         const int16_t sample = analogReadPin(SLIDER_ADC_PIN);
         if (sample >= 0) {
             cc_slider_raw = (uint16_t)sample;
-            // QMK RP2040 ChibiOS typically yields 12-bit samples (0..4095).
-            uint16_t pct = (uint16_t)(((uint32_t)cc_slider_raw * 100u + 2047u) / 4095u);
+            // QMK's ADC driver defaults to 10-bit readings (0..1023).
+            uint16_t pct = (uint16_t)(((uint32_t)cc_slider_raw * 100u + 511u) / 1023u);
             if (pct > 100) pct = 100;
             if (!cc_slider_valid || cc_slider_pct != pct) {
                 cc_slider_pct = pct;
