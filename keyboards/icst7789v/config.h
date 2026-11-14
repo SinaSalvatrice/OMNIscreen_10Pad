@@ -1,16 +1,19 @@
 #pragma once
 
 // RP2040-Zero, ST7789 240x320 native / 320x240 landscape.
-// These pins match the working Arduino Layer Map wiring.
-// SPI0: GP2 SCK, GP3 MOSI. This is a write-only panel.
+// ST7789 pin labels SCL/SDA are SPI clock/data, NOT I2C.
+// GP0/GP1 are not a valid RP2040 hardware SPI clock/TX pair.
+// Run the display over GPIO bit-banged SPI so these two pins can be used.
+#define ICST_LCD_SCK_PIN GP0   // TFT SCL / CLK
+#define ICST_LCD_MOSI_PIN GP1  // TFT SDA / DIN
+#define ICST_USE_HW_SPI 0
+
+// Optional hardware SPI fallback for a later GP2/GP3 wiring revision.
+// Unused by the GP0/GP1 software-SPI build.
 #define SPI_DRIVER SPID0
 #define SPI_SCK_PIN GP2
 #define SPI_MOSI_PIN GP3
 #define SPI_MISO_PIN NO_PIN
-
-// 1 = hardware SPI0, 0 = proven software-GPIO implementation.
-#define ICST_USE_HW_SPI 1
-// Conservative initial SPI clock divider (125 MHz / 32 ~ 3.9 MHz).
 #define ICST_SPI_DIVISOR 32
 
 // Tap Dance window: double taps must land within 200ms.
