@@ -33,10 +33,10 @@
 // Keep the QP display awake while diagnosing the hardware.
 #define QUANTUM_PAINTER_DISPLAY_TIMEOUT 0
 
-// External ten-pixel WS2812/SK6812 string (first pixel DIN on GP29).
+// 14 WS2812/SK6812 LEDs in one data chain: original 10 plus 4 under TFT. First DIN on GP29.
 // For bring-up, keep power demand modest; RGBLight clips values at 64/255.
 #define WS2812_DI_PIN GP29
-#define RGBLIGHT_LED_COUNT 10
+#define RGBLIGHT_LED_COUNT 14
 #define RGBLIGHT_LIMIT_VAL 64
 // Every LED displays a different hue and the rainbow moves automatically.
 #define RGBLIGHT_EFFECT_RAINBOW_SWIRL
