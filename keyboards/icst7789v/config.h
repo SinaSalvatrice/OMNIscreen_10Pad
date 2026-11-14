@@ -21,6 +21,8 @@
 #define TFT_RST_PIN GP4
 #define TFT_BL_PIN GP7
 
+#define SLIDER_ADC_PIN GP28  // ADC2; slide potentiometer signal
+
 #define TFT_WIDTH 240
 #define TFT_HEIGHT 320
 

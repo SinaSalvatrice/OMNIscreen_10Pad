@@ -197,6 +197,24 @@ bool encoder_update_user(uint8_t index, bool clockwise) {
 }
 
 void housekeeping_task_user(void) {
-    // No continuous refresh; input coalescing is important on 3.9MHz SPI.
+    // Sample only in MATRIX TEST, so ADC reads never impact normal key latency.
+    if (cc_matrix_test_view && timer_elapsed(cc_slider_last_sample) >= 55) {
+        cc_slider_last_sample = timer_read();
+        const int16_t sample = analogReadPin(SLIDER_ADC_PIN);
+        if (sample >= 0) {
+            cc_slider_raw = (uint16_t)sample;
+            // QMK's ADC driver defaults to 10-bit readings (0..1023).
+            uint16_t pct = (uint16_t)(((uint32_t)cc_slider_raw * 100u + 511u) / 1023u);
+            if (pct > 100) pct = 100;
+            if (!cc_slider_valid || cc_slider_pct != pct) {
+                cc_slider_pct = pct;
+                cc_dirty = true;
+            }
+            cc_slider_valid = true;
+        } else {
+            cc_slider_valid = false;
+            cc_dirty = true;
+        }
+    }
     if (cc_dirty && timer_elapsed(cc_last_draw) >= 35) cc_redraw();
 }

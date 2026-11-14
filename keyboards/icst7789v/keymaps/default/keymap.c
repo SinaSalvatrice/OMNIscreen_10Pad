@@ -5,6 +5,7 @@
 #include "gpio.h"
 #include "timer.h"
 #include "spi_master.h"
+#include "analog.h"
 #include "generated_layers.h"
 #include <stdbool.h>
 #include <stdint.h>
