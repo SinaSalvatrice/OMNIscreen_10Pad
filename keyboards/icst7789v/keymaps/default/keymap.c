@@ -1,6 +1,7 @@
-// ICST7789V - QMK independent GPIO diagnostic for ST7789 (240x320 native).
-// Deliberately bypasses Quantum Painter and hardware SPI. No rewiring required.
-// SPI mode 0, write-only on GP2 SCK / GP3 MOSI, 3.3V signals.
+// OMNIscreen 10Pad: ST7789 (240x320 native), 320x240 landscape.
+// SPI mode 0, write-only. GP0=SCL/SCK; GP1=SDA/MOSI.
+// GP0/GP1 require software SPI (hardware SPI0 SCK/TX live on GP2/GP3).
+// This is a test wiring variant; expect slower transfers than hardware SPI.
 #include QMK_KEYBOARD_H
 #include "gpio.h"
 #include "timer.h"
@@ -29,8 +30,8 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     [9] = CC_TD_LAYOUT,
     [10] = CC_TD_LAYOUT,
 };
-#define LCD_SCK   GP2
-#define LCD_MOSI  GP3
+#define LCD_SCK   ICST_LCD_SCK_PIN
+#define LCD_MOSI  ICST_LCD_MOSI_PIN
 #define LCD_RST   GP4
 #define LCD_DC    GP5
 #define LCD_CS    GP6
@@ -53,9 +54,9 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
 static bool panel_ready = false;
 
-// Always bootstrap ST7789 over proven GPIO bit-banging after any MCU reset.
-// Only switch GP2/GP3 into hardware SPI after panel reset, initialization,
-// and a visible software-SPI diagnostic square are complete.
+// Bootstrap the ST7789 over GPIO software SPI on every reset.
+// In GP0/GP1 mode, retain software SPI for the whole display lifetime.
+// The optional hardware SPI handoff is compiled only for a future GP2/GP3 build.
 #if ICST_USE_HW_SPI
 static bool lcd_hw_active = false;
 #endif
@@ -220,5 +221,5 @@ static void lcd_init(void) {
 #endif
 }
 
-// Layer UI implementation follows hardware SPI bootstrap (known good).
+// Layer UI follows the GPIO display bootstrap; GP0/GP1 remain software SPI.
 #include "cc_runtime.h"
