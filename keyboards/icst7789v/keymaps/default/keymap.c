@@ -31,7 +31,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
 // VIA-compatible independently editable rotation per layer.
 const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
-    [0] = { ENCODER_CCW_CW(LCTL(KC_MINS), LCTL(KC_EQL)) },
+    [0] = { ENCODER_CCW_CW(MS_WHLU, MS_WHLD) },
     [1] = { ENCODER_CCW_CW(KC_VOLD, KC_VOLU) },
     [2] = { ENCODER_CCW_CW(KC_PGUP, KC_PGDN) },
     [3] = { ENCODER_CCW_CW(KC_LEFT, KC_RGHT) },

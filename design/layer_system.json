@@ -141,9 +141,9 @@
         }
       ],
       "encoder": {
-        "ccw": "LCTL(KC_MINS)",
-        "cw": "LCTL(KC_EQL)",
-        "press": "LCTL(KC_0)"
+        "ccw": "MS_WHLU",
+        "cw": "MS_WHLD",
+        "press": "KC_F11"
       }
     },
     {
@@ -551,7 +551,7 @@
           "hold": "KC_NO"
         },
         {
-          "label": "EFFECT",
+          "label": "FX",
           "tap": "UG_NEXT",
           "hold": "KC_NO"
         },

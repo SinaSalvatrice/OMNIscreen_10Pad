@@ -226,3 +226,10 @@ Für Standardanimationen zuerst Palette mode = "Use QMK Effects" auswählen.
 **Kein GitHub Actions Build:** nur lokal bauen. Dies ist eine QMK-Änderung;
 die Funktion von Display, RGB und USB/VIA ist erst nach Flashen am 10Pad
 hardwareseitig verifiziert.
+
+**CC Studio analog:** Encoder CCW/CW = Mausrad hoch/runter (QMK Mouse Keys),
+Encoder-Druck = F11. Der GP28-Schieberegler gibt beim Verschieben relative
+Windows-Zoom-Schritte (Strg + Ziffernblock Plus/Minus) aus, je ca. 64 ADC-Werte.
+Nach dem Aktivieren des CC-Studio-Layers gilt die aktuelle Schieberposition
+als Ausgangswert, damit der PC nicht plötzlich zoomt. Für Programme ohne
+Strg+Plus/Minus-Zoom ist ggf. eine eigene App-Kombination nötig.

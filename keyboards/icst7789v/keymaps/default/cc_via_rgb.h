@@ -87,7 +87,7 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
         else if (id == 4) cc_palette.speed = data[3];
         else { data[0] = id_unhandled; return; }
         cc_rgb_dirty = true;
-        if (cc_palette.mode == 0) rgblight_mode_noeeprom(RGBLIGHT_MODE_RAINBOW_SWIRL);
+        if (cc_palette.mode == 0) rgblight_reload_from_eeprom();
         return;
     }
     if (data[0] == id_custom_get_value) {

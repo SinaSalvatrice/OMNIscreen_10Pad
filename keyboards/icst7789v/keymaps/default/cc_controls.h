@@ -214,6 +214,28 @@ bool encoder_update_user(uint8_t index, bool clockwise) {
     return false;
 }
 
+// CC Studio analog slider (GP28): relative Ctrl+Numpad+/− zoom.
+// Movement is quantized around the last position, never jumps at startup.
+static int16_t cc_zoom_reference = -1;
+static void cc_zoom_slider_update(int16_t sample) {
+    if (sample < 0) return;
+    if (cc_active != 0) { cc_zoom_reference = -1; return; }
+    if (cc_zoom_reference < 0) { cc_zoom_reference = sample; return; }
+    // 64 ADC units per zoom step; ignore small ADC noise.
+    for (uint8_t steps = 0; steps < 3; ++steps) {
+        const int16_t delta = sample - cc_zoom_reference;
+        if (delta >= 64) {
+            tap_code16(LCTL(KC_PPLS));
+            cc_zoom_reference += 64;
+        } else if (delta <= -64) {
+            tap_code16(LCTL(KC_PMNS));
+            cc_zoom_reference -= 64;
+        } else {
+            break;
+        }
+    }
+}
+
 void housekeeping_task_user(void) {
 #ifdef RGBLIGHT_ENABLE
     cc_rgb_tick();
@@ -236,6 +258,10 @@ void housekeeping_task_user(void) {
             cc_slider_valid = false;
             cc_dirty = true;
         }
+    }
+    if (!cc_matrix_test_view && timer_elapsed(cc_slider_last_sample) >= 60) {
+        cc_slider_last_sample = timer_read();
+        cc_zoom_slider_update(analogReadPin(SLIDER_ADC_PIN));
     }
     if (cc_dirty && timer_elapsed(cc_last_draw) >= 35) cc_redraw();
 }
