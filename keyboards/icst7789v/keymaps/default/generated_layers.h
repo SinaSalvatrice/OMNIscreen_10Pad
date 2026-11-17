@@ -59,7 +59,7 @@ static const cc_layer_desc_t cc_layers[CC_LAYER_COUNT] = {
    {"COPY", "PASTE", "CUT", "ALL", "SHIFT", "SHOT", "SAVE", "CLIP", "CTRL", "ALT"},
    {LCTL(KC_C), LCTL(KC_V), LCTL(KC_X), LCTL(KC_A), KC_LSFT, LGUI(LSFT(KC_S)), LCTL(KC_S), LGUI(KC_V), KC_LCTL, KC_LALT},
    {KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO},
-   LCTL(KC_Y), LCTL(KC_Z), LCTL(KC_S)
+   LCTL(KC_Y), LCTL(KC_Z), LCTL(KC_S),
    {0x03C0, 0x1DB8, 0x33CC, 0x366C, 0x3C3C, 0x781E, 0x781E, 0x3C3C, 0x366C, 0x33CC, 0x1DB8, 0x03C0, 0x0000, 0x0000, 0x0000, 0x0000}},
   {"MACROS", 0xB4BB,
    {"-", "-", "-", "-", "SHIFT", "-", "-", "-", "CTRL", "ALT"},
