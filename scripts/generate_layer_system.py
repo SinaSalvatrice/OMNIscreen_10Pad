@@ -28,11 +28,11 @@ def icon_rows(layer):
 
 def validate(data):
     layers = data["layers"]
-    assert len(layers) == 11 and layers[0]["id"] == "HOME", "Need HOME + 10 user layers"
+    assert len(layers) == 7 and [l["id"] for l in layers[:2]] == ["CCSTUDIO", "DEFAULT"], "Expected seven ordered VIA layers"
     keys = data["physical_keys"]
     assert data["key_layout"] == [4, 4, 2] and data["key_count"] == 10
     assert data["wide_key"] == 9 and data["tall_key"] == 5
-    assert len(keys) == 10 and len(data["home_double_targets"]) == 10
+    assert len(keys) == 10
     assert [k["id"] for k in keys] == ["K"+str(i) for i in range(1,11)]
     # Switch positions must be unique, but exact row/column assignments are
     # wiring-specific and belong to design/layer_system.json, not this script.
@@ -58,8 +58,6 @@ def validate(data):
     assert data["gestures"]["k0"]["dedicated_module_only"] is True
     ids = [l["id"] for l in layers]
     assert len(ids) == len(set(ids))
-    for target in data["home_double_targets"]:
-        assert target in ids, target
     for l in layers:
         assert re.fullmatch(r"#[0-9A-Fa-f]{6}", l["accent"])
         assert len(l["name"]) <= 9 and len(l["keys"]) == 10, l["id"]
@@ -95,8 +93,6 @@ def generate_header(data):
            ", ".join(str(k["row"]) for k in data["physical_keys"]) + "};",
            "static const uint8_t cc_matrix_col[CC_KEY_COUNT] = {" +
            ", ".join(str(k["col"]) for k in data["physical_keys"]) + "};",
-           "static const uint8_t cc_double_target[CC_KEY_COUNT] = {" +
-           ", ".join(str(ids.index(i)) for i in data["home_double_targets"]) + "};",
            "static const cc_layer_desc_t cc_layers[CC_LAYER_COUNT] = {"]
     for l in layers:
         out.append('  {' + q(l["name"]) +
@@ -112,7 +108,7 @@ def generate_header(data):
 
 def preview(data, selected, filename):
     layers = data["layers"]
-    name = "HOME" if selected == 0 else layers[selected]["name"]
+    name = layers[selected]["name"]
     color = layers[selected]["accent"]
     parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 320 240">',
              '<rect width="320" height="240" fill="#10151C"/>',
@@ -128,14 +124,13 @@ def preview(data, selected, filename):
                 parts.append('<rect x="%d" y="%d" width="4" height="4" fill="%s"/>' %
                              (29+x*4, 63+y*4, color))
     parts += ['<text x="62" y="156" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14" fill="#FFFFFF">'+escape(name)+'</text>',
-              '<text x="62" y="173" text-anchor="middle" font-family="Arial" font-size="9" fill="#ACBAC4">'+("2X = LAYER" if selected==0 else "LAYER %02d"%selected)+'</text>']
+              '<text x="62" y="173" text-anchor="middle" font-family="Arial" font-size="9" fill="#ACBAC4">'+("LAYER %02d" % selected)+'</text>']
     for i,key in enumerate(data["physical_keys"]):
         x=125+key["x"]*47
         y=40+key["y"]*55
         width=43+(key["w"]-1)*47
         height=47+(key["h"]-1)*55
-        label = (data["home_double_targets"][i] if selected==0
-                 else layers[selected]["keys"][i]["label"])[:5]
+        label = layers[selected]["keys"][i]["label"][:5]
         is_special = key["w"]>1 or key["h"]>1
         parts+=['<rect x="%d" y="%d" width="%d" height="%d" rx="4" fill="%s" stroke="%s"/>' %
                 (x,y,width,height, "#254653" if is_special else "#263744",
@@ -145,7 +140,7 @@ def preview(data, selected, filename):
                 '<text x="%d" y="%d" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">%s</text>'%
                  (x+width//2,y+height//2+5,escape(label))]
     parts+=['<rect x="0" y="216" width="320" height="24" fill="#18242E"/>',
-             '<text x="7" y="231" font-family="Arial" font-size="9" fill="#C6D7DD">K0  1x MODE   2x HOME   HOLD MENU</text>',
+             '<text x="7" y="231" font-family="Arial" font-size="9" fill="#C6D7DD">K0  1x MODE   2x DEFAULT   HOLD MENU</text>',
              '<text x="312" y="231" font-family="Arial" font-size="8" text-anchor="end" fill="'+color+'">'+("TAP DANCE" if selected==0 else "MACRO MAP")+'</text>',
              '</svg>']
     PREVIEWS.mkdir(parents=True, exist_ok=True)
@@ -156,10 +151,10 @@ def main():
     validate(data)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(generate_header(data),encoding="utf-8")
-    preview(data,0,"home.svg")
-    preview(data,1,"edit.svg")
-    preview(data,3,"media.svg")
-    print("Generated layer header and 3 SVG screen previews.")
+    preview(data,0,"cc_studio.svg")
+    preview(data,1,"default.svg")
+    preview(data,6,"settings.svg")
+    print("Generated seven VIA layer descriptions and screen previews.")
 
 if __name__ == "__main__":
     main()

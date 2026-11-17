@@ -1,5 +1,6 @@
 // QMK Tap Dance + dedicated K0 + dual-mode EC11 controls.
 #pragma once
+#include "cc_via_rgb.h"
 
 static void cc_encoder_press_action(void) {
     if (cc_matrix_test_view) {
@@ -39,64 +40,56 @@ static void cc_encoder_press_action(void) {
     }
 }
 
-// All 10 macro keys participate in Tap Dance; K0 is not a matrix key.
-static void cc_tap_finished(tap_dance_state_t *state, void *data) {
-    (void)data;
-    const uint8_t index = state->index;
-    if (cc_matrix_test_view || index >= CC_KEY_COUNT) return;
-    if (state->count >= 3 && index == 9) {
-        cc_activate_layer(cc_previous);
-        return;
-    }
-    if (state->count >= 2) {
-        cc_activate_layer(cc_double_target[index]);
-        return;
-    }
-    const cc_layer_desc_t *desc = &cc_layers[cc_active];
-    const uint16_t held = desc->holds[index];
-    const uint16_t tap = desc->taps[index];
-    if (state->pressed && !state->interrupted && held != KC_NO) {
-        register_code16(held);
-        cc_held_code[index] = held;
-    } else if (tap != KC_NO) {
-        tap_code16(tap);
-    }
-    cc_last_key = index;
-    cc_dirty = true;
-}
+// Immediate fixed modifiers: physical K5=Shift, K9=Ctrl, K10=Alt.
+// K9's double-tap is recognized on two clean short Ctrl presses without
+// delaying Ctrl in combinations such as Ctrl+C or Ctrl+Shift+Z.
+static bool cc_k9_down = false;
+static bool cc_k9_chord = false;
+static bool cc_k9_armed = false;
+static bool cc_k9_second = false;
+static uint16_t cc_k9_pressed_at = 0;
+static uint16_t cc_k9_released_at = 0;
 
-static void cc_tap_reset(tap_dance_state_t *state, void *data) {
-    (void)data;
-    const uint8_t index = state->index;
-    if (index < CC_KEY_COUNT && cc_held_code[index] != KC_NO) {
-        unregister_code16(cc_held_code[index]);
-        cc_held_code[index] = KC_NO;
+static bool cc_handle_fixed_modifier(uint8_t row, uint8_t col, bool pressed) {
+    if (row == 1 && col == 0) {
+        if (pressed) register_code(KC_LSFT); else unregister_code(KC_LSFT);
+        return true;
     }
+    if (row == 2 && col == 3) {
+        if (pressed) register_code(KC_LALT); else unregister_code(KC_LALT);
+        return true;
+    }
+    if (row != 2 || col != 2) return false;
+    if (pressed) {
+        cc_k9_second = cc_k9_armed && timer_elapsed(cc_k9_released_at) <= CC_K9_DOUBLE_TAP_MS;
+        cc_k9_armed = false;
+        cc_k9_chord = false;
+        cc_k9_down = true;
+        cc_k9_pressed_at = timer_read();
+        register_code(KC_LCTL);
+    } else {
+        unregister_code(KC_LCTL);
+        cc_k9_down = false;
+        const bool clean = !cc_k9_chord && timer_elapsed(cc_k9_pressed_at) <= CC_K9_DOUBLE_TAP_MS;
+        if (clean && cc_k9_second) {
+            cc_k9_armed = false;
+            cc_activate_layer(0); // CC Studio
+        } else {
+            cc_k9_armed = clean;
+            cc_k9_released_at = timer_read();
+        }
+        cc_k9_second = false;
+    }
+    return true;
 }
-
-tap_dance_action_t tap_dance_actions[] = {
-    [0]  = ACTION_TAP_DANCE_FN_ADVANCED(NULL, cc_tap_finished, cc_tap_reset),
-    [1]  = ACTION_TAP_DANCE_FN_ADVANCED(NULL, cc_tap_finished, cc_tap_reset),
-    [2]  = ACTION_TAP_DANCE_FN_ADVANCED(NULL, cc_tap_finished, cc_tap_reset),
-    [3]  = ACTION_TAP_DANCE_FN_ADVANCED(NULL, cc_tap_finished, cc_tap_reset),
-    [4]  = ACTION_TAP_DANCE_FN_ADVANCED(NULL, cc_tap_finished, cc_tap_reset),
-    [5]  = ACTION_TAP_DANCE_FN_ADVANCED(NULL, cc_tap_finished, cc_tap_reset),
-    [6]  = ACTION_TAP_DANCE_FN_ADVANCED(NULL, cc_tap_finished, cc_tap_reset),
-    [7]  = ACTION_TAP_DANCE_FN_ADVANCED(NULL, cc_tap_finished, cc_tap_reset),
-    [8]  = ACTION_TAP_DANCE_FN_ADVANCED(NULL, cc_tap_finished, cc_tap_reset),
-    [9]  = ACTION_TAP_DANCE_FN_ADVANCED(NULL, cc_tap_finished, cc_tap_reset),
-};
 
 void keyboard_post_init_user(void) {
     gpio_set_pin_input_high(ENCODER_SW);
     gpio_set_pin_input_high(K0_SW);
 #ifdef RGBLIGHT_ENABLE
-    // Standalone 10-NeoPixel bring-up: visible rainbow chase on GP29.
-    // The mode and brightness are RAM-only, never written to EEPROM.
-    rgblight_enable_noeeprom();
-    rgblight_mode_noeeprom(RGBLIGHT_MODE_RAINBOW_SWIRL);
-    rgblight_sethsv_noeeprom(0, 255, 64);
+    cc_rgb_load(); // Restore VIA palette; do not override VIA/QMK RGB EEPROM effects.
 #endif
+    layer_move(1); // Default is layer 1 on every USB boot.
     lcd_init(); // Known-good GPIO bootstrap then QMK HW SPI.
     cc_dirty = true;
 }
@@ -135,7 +128,7 @@ static void cc_k0_update(void) {
         const uint8_t taps = cc_k0_tap_count;
         cc_k0_tap_count = 0;
         if (taps == 2) {
-            cc_open_home();
+            cc_open_home(); // Also activates DEFAULT (layer 1).
         } else if (cc_matrix_test_view) {
             // K0 1x also offers an immediate exit after the tap window.
             cc_matrix_test_exit();
@@ -158,14 +151,41 @@ static void cc_encoder_button_update(void) {
     }
 }
 
-// All key events are consumed locally in MATRIX TEST. This is before
-// process_tap_dance in QMK, so no normal macro actions reach the host.
+// Physical safety behavior precedes whatever VIA assigned at that matrix cell.
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     (void)keycode;
-    if (!cc_matrix_test_view) return true;
-    cc_matrix_test_record(record->event.key.row, record->event.key.col,
-                          record->event.pressed);
-    return false;
+    const uint8_t row = record->event.key.row;
+    const uint8_t col = record->event.key.col;
+    if (cc_matrix_test_view) {
+        cc_matrix_test_record(row, col, record->event.pressed);
+        return false;
+    }
+    if (cc_k9_down && record->event.pressed && !(row == 2 && col == 2)) {
+        cc_k9_chord = true;
+    }
+    if (cc_handle_fixed_modifier(row, col, record->event.pressed)) return false;
+    if (record->event.pressed) {
+        for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
+            if (cc_matrix_row[i] == row && cc_matrix_col[i] == col) {
+                cc_last_key = i;
+                cc_dirty = true;
+                break;
+            }
+        }
+    }
+    return true; // QMK/VIA dynamic keymap, macros and lighting keys.
+}
+
+layer_state_t layer_state_set_user(layer_state_t state) {
+    const uint8_t highest = get_highest_layer(state);
+    if (highest < CC_LAYER_COUNT && cc_active != highest) {
+        cc_previous = cc_active;
+        cc_active = highest;
+        cc_preview = highest;
+        cc_home_view = false;
+        cc_dirty = true;
+    }
+    return state;
 }
 
 void matrix_scan_user(void) {
@@ -189,14 +209,37 @@ bool encoder_update_user(uint8_t index, bool clockwise) {
         cc_home_view = cc_preview == 0;
         cc_dirty = true;
     } else {
-        uint16_t kc = clockwise ? cc_layers[cc_active].encoder_cw :
-                                  cc_layers[cc_active].encoder_ccw;
-        if (kc != KC_NO) tap_code16(kc);
+        return true; // QMK encoder map: VIA remaps CCW/CW independently per layer.
     }
     return false;
 }
 
+// CC Studio analog slider (GP28): relative Ctrl+Numpad+/− zoom.
+// Movement is quantized around the last position, never jumps at startup.
+static int16_t cc_zoom_reference = -1;
+static void cc_zoom_slider_update(int16_t sample) {
+    if (sample < 0) return;
+    if (cc_active != 0) { cc_zoom_reference = -1; return; }
+    if (cc_zoom_reference < 0) { cc_zoom_reference = sample; return; }
+    // 64 ADC units per zoom step; ignore small ADC noise.
+    for (uint8_t steps = 0; steps < 3; ++steps) {
+        const int16_t delta = sample - cc_zoom_reference;
+        if (delta >= 64) {
+            tap_code16(LCTL(KC_PPLS));
+            cc_zoom_reference += 64;
+        } else if (delta <= -64) {
+            tap_code16(LCTL(KC_PMNS));
+            cc_zoom_reference -= 64;
+        } else {
+            break;
+        }
+    }
+}
+
 void housekeeping_task_user(void) {
+#ifdef RGBLIGHT_ENABLE
+    cc_rgb_tick();
+#endif
     // Sample only in MATRIX TEST, so ADC reads never impact normal key latency.
     if (cc_matrix_test_view && timer_elapsed(cc_slider_last_sample) >= 55) {
         cc_slider_last_sample = timer_read();
@@ -215,6 +258,10 @@ void housekeeping_task_user(void) {
             cc_slider_valid = false;
             cc_dirty = true;
         }
+    }
+    if (!cc_matrix_test_view && timer_elapsed(cc_slider_last_sample) >= 60) {
+        cc_slider_last_sample = timer_read();
+        cc_zoom_slider_update(analogReadPin(SLIDER_ADC_PIN));
     }
     if (cc_dirty && timer_elapsed(cc_last_draw) >= 35) cc_redraw();
 }

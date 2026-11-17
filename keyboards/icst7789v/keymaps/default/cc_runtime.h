@@ -6,13 +6,13 @@
 #define CC_K0_HOLD_MS 620
 #define CC_DEBOUNCE_MS 25
 
-static uint8_t cc_active = 0;
+static uint8_t cc_active = 1;
 static uint8_t cc_previous = 0;
-static uint8_t cc_preview = 0;
+static uint8_t cc_preview = 1;
 static uint8_t cc_last_key = 255;
 static uint8_t cc_menu_selection = 0;
 static bool cc_display_mode = true;
-static bool cc_home_view = true;
+static bool cc_home_view = false;
 static bool cc_menu_view = false;
 static bool cc_help_view = false;
 static bool cc_color_view = false;
@@ -107,11 +107,11 @@ static void cc_activate_layer(uint8_t layer_index) {
 }
 
 static void cc_open_home(void) {
-    // K0 exclusively changes the module UI; it never emits a keycode.
-    // The active PC macro layer remains unchanged.
+    // HOME in this design means the DEFAULT layer, not a separate layer map.
+    cc_activate_layer(1);
     cc_display_mode = true;
-    cc_home_view = true;
-    cc_preview = 0;
+    cc_home_view = false;
+    cc_preview = 1;
     cc_menu_view = false;
     cc_help_view = false;
     cc_color_view = false;
@@ -149,12 +149,11 @@ static void cc_background(void) {
     cc_draw_text(7, 9, "CC / LAYERS", 1, C_WHITE);
     cc_draw_text(265, 9, cc_display_mode ? "DISP" : "ENC", 1,
                  cc_display_mode ? C_CYAN : C_YELLOW);
-    cc_draw_text(7, 225, "K0 1X MODE 2X HOME HOLD MENU", 1, 0xD69A);
+    cc_draw_text(7, 225, "K0 1X MODE 2X DEFAULT HOLD MENU", 1, 0xD69A);
 }
 
 static void cc_layer_screen(void) {
-    const bool home = cc_home_view;
-    const uint8_t selected = home ? 0 : cc_preview;
+    const uint8_t selected = cc_preview;
     const cc_layer_desc_t *desc = &cc_layers[selected];
     const uint16_t accent = desc->accent_rgb565;
     cc_background();
@@ -162,9 +161,8 @@ static void cc_layer_screen(void) {
     lcd_fill(7, 33, 109, 4, accent);
     cc_draw_icon(selected, accent);
     cc_draw_text(12, 151, desc->name, 2, C_WHITE);
-    cc_draw_text(12, 180, home ? "2X: LAYER" : "TAP: ACTION", 1, accent);
-    cc_draw_text(12, 192, home ? "HOME MAP" :
-                 (selected == cc_active ? "ACTIVE" : "PREVIEW"), 1, C_WHITE);
+    cc_draw_text(12, 180, "K9 2X CC  K0 2X DEF", 1, accent);
+    cc_draw_text(12, 192, selected == cc_active ? "ACTIVE" : "PREVIEW", 1, C_WHITE);
     for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
         // Coordinates come from the physical-key geometry in layer_system.json.
         // K5 is double-height; K9 is double-width; K10 is bottom-right.
@@ -173,10 +171,11 @@ static void cc_layer_screen(void) {
         const uint16_t y = shape->y;
         const uint16_t w = shape->w;
         const uint16_t h = shape->h;
-        const char *label = home ? cc_layers[cc_double_target[i]].name :
-                                  desc->labels[i];
-        const bool highlight = home ? cc_double_target[i] == cc_preview :
-                                     cc_last_key == i;
+        // The screen must not pretend that a VIA-edited key still has its preset.
+        const bool fixed_modifier = i == 4 || i == 8 || i == 9;
+        const uint16_t mapped = dynamic_keymap_get_keycode(selected, cc_matrix_row[i], cc_matrix_col[i]);
+        const char *label = (!fixed_modifier && mapped != desc->taps[i]) ? "VIA" : desc->labels[i];
+        const bool highlight = cc_last_key == i;
         lcd_fill(x, y, w, h, highlight ? 0x3A90 : 0x29E8);
         lcd_fill(x, y, w, 2, highlight ? accent : 0x426A);
         cc_draw_text(x + 4, y + 5, "K", 1, 0xAD75);
@@ -357,13 +356,13 @@ static void cc_help_screen(void) {
     cc_background();
     cc_draw_text(12, 40, "MODULE HELP", 2, C_CYAN);
     cc_draw_text(12, 78, "K0 1X  DISP/ENC", 1, C_WHITE);
-    cc_draw_text(12, 96, "K0 2X  HOME", 1, C_WHITE);
+    cc_draw_text(12, 96, "K0 2X  DEFAULT", 1, C_WHITE);
     cc_draw_text(12, 114, "K0 3X  MATRIX", 1, C_CYAN);
     cc_draw_text(12, 129, "K0 HOLD  MENU", 1, C_WHITE);
-    cc_draw_text(12, 147, "KEY 1X  MACRO", 1, C_WHITE);
-    cc_draw_text(12, 162, "KEY 2X  LAYER", 1, C_WHITE);
-    cc_draw_text(12, 177, "KEY HOLD  ALT", 1, C_WHITE);
-    cc_draw_text(12, 192, "K10 3X  PREV", 1, C_YELLOW);
+    cc_draw_text(12, 147, "K9  2X  CC STUDIO", 1, C_WHITE);
+    cc_draw_text(12, 162, "ENC TURN  SELECT", 1, C_WHITE);
+    cc_draw_text(12, 177, "K5 SHIFT K9 CTRL", 1, C_WHITE);
+    cc_draw_text(12, 192, "K10 ALT / VIA", 1, C_YELLOW);
 }
 
 static void cc_color_screen(void) {
