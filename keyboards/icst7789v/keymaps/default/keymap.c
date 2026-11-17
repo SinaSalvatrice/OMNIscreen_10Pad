@@ -7,6 +7,9 @@
 #include "spi_master.h"
 #include "analog.h"
 #include "generated_layers.h"
+#include "dynamic_keymap.h"
+#include "eeconfig.h"
+#include "via.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -14,22 +17,29 @@
 #    include "rgblight.h"
 #endif
 
-// QMK has eleven real layers and ten physical macro keys. All keys use Tap Dance
-// interpreter, which selects actions from the generated shared design.
-#define CC_TD_LAYOUT LAYOUT(TD(0), TD(1), TD(2), TD(3), TD(4), TD(5), TD(6), TD(7), TD(8), TD(9))
+// Seven real QMK layers. VIA writes each layer's keycodes independently to EEPROM.
+// K5/K9/K10 are physical fixed modifiers (handled in process_record_user).
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
-    [0] = CC_TD_LAYOUT,
-    [1] = CC_TD_LAYOUT,
-    [2] = CC_TD_LAYOUT,
-    [3] = CC_TD_LAYOUT,
-    [4] = CC_TD_LAYOUT,
-    [5] = CC_TD_LAYOUT,
-    [6] = CC_TD_LAYOUT,
-    [7] = CC_TD_LAYOUT,
-    [8] = CC_TD_LAYOUT,
-    [9] = CC_TD_LAYOUT,
-    [10] = CC_TD_LAYOUT,
+    [0] = LAYOUT(KC_Z, KC_Y, KC_G, KC_R, KC_LSFT, KC_Q, KC_S, KC_NO, KC_LCTL, KC_LALT),
+    [1] = LAYOUT(KC_NO, KC_NO, KC_UP, KC_NO, KC_LSFT, KC_LEFT, KC_DOWN, KC_RGHT, KC_LCTL, KC_LALT),
+    [2] = LAYOUT(KC_HOME, KC_PGUP, KC_UP, KC_END, KC_LSFT, KC_LEFT, KC_DOWN, KC_RGHT, KC_LCTL, KC_LALT),
+    [3] = LAYOUT(LCTL(KC_Z), LCTL(KC_Y), LCTL(KC_B), LCTL(KC_I), KC_LSFT, LCTL(KC_C), LCTL(KC_V), LCTL(KC_X), KC_LCTL, KC_LALT),
+    [4] = LAYOUT(LCTL(KC_C), LCTL(KC_V), LCTL(KC_X), LCTL(KC_A), KC_LSFT, LGUI(LSFT(KC_S)), LCTL(KC_S), LGUI(KC_V), KC_LCTL, KC_LALT),
+    [5] = LAYOUT(KC_NO, KC_NO, KC_NO, KC_NO, KC_LSFT, KC_NO, KC_NO, KC_NO, KC_LCTL, KC_LALT),
+    [6] = LAYOUT(UG_TOGG, UG_NEXT, UG_HUEU, UG_HUED, KC_LSFT, UG_VALU, UG_VALD, UG_SATU, KC_LCTL, KC_LALT),
 };
+
+// VIA-compatible independently editable rotation per layer.
+const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
+    [0] = { ENCODER_CCW_CW(LCTL(KC_MINS), LCTL(KC_EQL)) },
+    [1] = { ENCODER_CCW_CW(KC_VOLD, KC_VOLU) },
+    [2] = { ENCODER_CCW_CW(KC_PGUP, KC_PGDN) },
+    [3] = { ENCODER_CCW_CW(KC_LEFT, KC_RGHT) },
+    [4] = { ENCODER_CCW_CW(LCTL(KC_Z), LCTL(KC_Y)) },
+    [5] = { ENCODER_CCW_CW(KC_NO, KC_NO) },
+    [6] = { ENCODER_CCW_CW(UG_VALD, UG_VALU) },
+};
+
 #define LCD_SCK   GP2
 #define LCD_MOSI  GP3
 #define LCD_RST   GP4

@@ -180,3 +180,49 @@ Only **after wiring the LED data line to GP29**, change `RGBLIGHT_ENABLE = no` t
 ## Legacy independent tests
 
 The old `arduino/ST7789V_RP2040_Zero_Test/ST7789V_RP2040_Zero_Test.ino` still targets a **different 135×240 panel** with different CS/RES wiring. `diag_pico/` is also preserved.
+
+## VIA — aktuelle 10Pad-Belegung (2026-11)
+
+**Firmware-Stand:** Die sieben Layer werden in `design/layer_system.json` gepflegt;
+`scripts/generate_layer_system.py` aktualisiert den Anzeigecode. Die statischen
+Keymaps bilden die VIA-Startbelegung, VIA speichert spätere Änderungen pro Layer
+im QMK-EEPROM. Nach neuem Flashen bleiben ältere EEPROM-Belegungen ggf. erhalten;
+bei Bedarf in VIA die Belegung zurücksetzen (vorher sichern).
+
+| Layer | Nummer | Verwendung |
+|---|---:|---|
+| CCSTUDIO | 0 | Z Y G R / Shift Q S frei / Ctrl Alt |
+| DEFAULT | 1 | Pfeile wie Foto; übrige Felder frei; Shift/Ctrl/Alt |
+| NAV | 2 | Home, Page Up, Pfeile, End |
+| TEXT | 3 | Undo, Redo, Fett, Kursiv, Kopieren, Einfügen, Ausschneiden |
+| SHORTCUT | 4 | Zwischenablage, Windows-Screenshot, Speichern |
+| MACROS | 5 | alle sieben Nutz-Tasten leer; über VIA frei belegen |
+| SETTINGS | 6 | RGB an/aus, Effekte, Farbton, Sättigung, Helligkeit |
+
+**Feste Tasten:** K5 = Shift, K9 = Ctrl, K10 = Alt; unabhängig vom VIA-Layer
+und mit sofortigem Key-Down/Up. K9 **zweimal kurz tippen** (ohne andere
+Taste dazwischen) aktiviert CCSTUDIO. K0 **zweimal tippen** aktiviert DEFAULT.
+K0 einmal wechselt Anzeige/Encoder-Modus, lang öffnet das Menü, dreimal
+öffnet den Matrix-Test. Im Anzeige-Modus Layer per Encoder auswählen und
+per Encoder-Druck aktivieren; im Encoder-Modus lässt VIA CCW/CW pro Layer
+belegen. K0 und Encoder-Druck sind separate GPIO-Taster und *keine*
+Matrix-Tasten in VIA. Das physische K9-Tap-Dance und die Modifikatoren sind
+bewusst nicht umprogrammierbar, auch wenn VIA an den Matrixpositionen
+andere gespeicherte Keycodes anzeigen kann.
+
+**VIA laden:** Firmware lokal mit `build_uf2.bat` bauen/flashen.
+Anschließend in [usevia.app](https://usevia.app) unter Einstellungen
+"Show Design tab" aktivieren, in "Design" die `via.json` aus dem
+Repository laden, Gerät verbinden. `VIA_ENABLE=yes`, sieben dynamische
+Layer und ein separater Encoder-Map sind im Standard-Keymap aktiv.
+
+**RGB:** 14 WS2812/SK6812 auf GP29, auf Helligkeit 64 begrenzt.
+VIA > Lighting > QMK Effects steuert die QMK-Animationen.
+VIA > Lighting > One / Two Colors bietet **eine Farbe**, **abwechselnd zwei**,
+**7+7 geteilte Farben** und **wandernde Zweifarbpalette**. Farben und
+Chase-Geschwindigkeit werden bei VIA-Save im EEPROM gespeichert.
+Für Standardanimationen zuerst Palette mode = "Use QMK Effects" auswählen.
+
+**Kein GitHub Actions Build:** nur lokal bauen. Dies ist eine QMK-Änderung;
+die Funktion von Display, RGB und USB/VIA ist erst nach Flashen am 10Pad
+hardwareseitig verifiziert.

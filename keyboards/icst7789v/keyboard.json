@@ -1,13 +1,13 @@
 {
   "manufacturer": "SinaSalvatrice",
-  "keyboard_name": "ICST7789V Module Tester",
+  "keyboard_name": "OMNIscreen 10Pad",
   "maintainer": "SinaSalvatrice",
   "processor": "RP2040",
   "bootloader": "rp2040",
   "usb": {
     "vid": "0xFEED",
     "pid": "0x7789",
-    "device_version": "0.2.0"
+    "device_version": "0.3.0"
   },
   "features": {
     "bootmagic": false,
@@ -23,7 +23,8 @@
         "pin_b": "GP9",
         "resolution": 4
       }
-    ]
+    ],
+    "enabled": true
   },
   "matrix_pins": {
     "rows": [
@@ -127,5 +128,8 @@
         }
       ]
     }
+  },
+  "dynamic_keymap": {
+    "layer_count": 7
   }
 }

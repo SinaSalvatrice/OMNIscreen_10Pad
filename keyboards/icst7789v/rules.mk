@@ -6,7 +6,7 @@ BOARD = GENERIC_RP_RP2040
 QUANTUM_PAINTER_ENABLE = no
 SPI_DRIVER_REQUIRED = yes
 ANALOG_DRIVER_REQUIRED = yes
-TAP_DANCE_ENABLE = yes
+# K9 double tap handled immediately in process_record_user (no delayed modifier).
 
 # Matrix and EC11 QMK modules remain enabled in keyboard.json.
 # Optional external WS2812/SK6812 on GP29:
