@@ -233,3 +233,8 @@ Windows-Zoom-Schritte (Strg + Ziffernblock Plus/Minus) aus, je ca. 64 ADC-Werte.
 Nach dem Aktivieren des CC-Studio-Layers gilt die aktuelle Schieberposition
 als Ausgangswert, damit der PC nicht plötzlich zoomt. Für Programme ohne
 Strg+Plus/Minus-Zoom ist ggf. eine eigene App-Kombination nötig.
+
+**Tastaturlayout:** Z/Y und Undo/Redo sind für einen Windows-PC mit deutschem
+QWERTZ-Layout ausgelegt: QMK sendet für „Z“ die US-HID-Position `KC_Y`.
+Bei Umstellung des PC-Layouts auf US müssen die beiden Belegungen in VIA
+entsprechend angepasst werden.

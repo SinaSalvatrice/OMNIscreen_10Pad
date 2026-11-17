@@ -33,7 +33,7 @@ static const uint8_t cc_matrix_col[CC_KEY_COUNT] = {0, 1, 2, 3, 0, 1, 2, 3, 2, 3
 static const cc_layer_desc_t cc_layers[CC_LAYER_COUNT] = {
   {"CCSTUDIO", 0xCC2B,
    {"Z", "Y", "G", "R", "SHIFT", "Q", "S", "-", "CTRL", "ALT"},
-   {KC_Z, KC_Y, KC_G, KC_R, KC_LSFT, KC_Q, KC_S, KC_NO, KC_LCTL, KC_LALT},
+   {KC_Y, KC_Z, KC_G, KC_R, KC_LSFT, KC_Q, KC_S, KC_NO, KC_LCTL, KC_LALT},
    {KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO},
    MS_WHLU, MS_WHLD, KC_F11,
    {0x0180, 0x0180, 0x1998, 0x0FF0, 0x07E0, 0x3FFC, 0x07E0, 0x0FF0, 0x1998, 0x0180, 0x0180, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000}},
@@ -51,7 +51,7 @@ static const cc_layer_desc_t cc_layers[CC_LAYER_COUNT] = {
    {0x0180, 0x03C0, 0x07E0, 0x0E70, 0x1C38, 0x381C, 0x718E, 0x399C, 0x1DB8, 0x0F70, 0x07E0, 0x03C0, 0x0180, 0x0000, 0x0000, 0x0000}},
   {"TEXT", 0xDD59,
    {"UNDO", "REDO", "BOLD", "ITAL", "SHIFT", "COPY", "PASTE", "CUT", "CTRL", "ALT"},
-   {LCTL(KC_Z), LCTL(KC_Y), LCTL(KC_B), LCTL(KC_I), KC_LSFT, LCTL(KC_C), LCTL(KC_V), LCTL(KC_X), KC_LCTL, KC_LALT},
+   {LCTL(KC_Y), LCTL(KC_Z), LCTL(KC_B), LCTL(KC_I), KC_LSFT, LCTL(KC_C), LCTL(KC_V), LCTL(KC_X), KC_LCTL, KC_LALT},
    {KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO},
    KC_LEFT, KC_RGHT, KC_ENT,
    {0x3FFC, 0x3FFC, 0x03C0, 0x03C0, 0x03C0, 0x03C0, 0x03C0, 0x03C0, 0x03C0, 0x03C0, 0x0FF0, 0x0FF0, 0x0000, 0x0000, 0x0000, 0x0000}},
@@ -59,7 +59,7 @@ static const cc_layer_desc_t cc_layers[CC_LAYER_COUNT] = {
    {"COPY", "PASTE", "CUT", "ALL", "SHIFT", "SHOT", "SAVE", "CLIP", "CTRL", "ALT"},
    {LCTL(KC_C), LCTL(KC_V), LCTL(KC_X), LCTL(KC_A), KC_LSFT, LGUI(LSFT(KC_S)), LCTL(KC_S), LGUI(KC_V), KC_LCTL, KC_LALT},
    {KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO},
-   LCTL(KC_Z), LCTL(KC_Y), LCTL(KC_S),
+   LCTL(KC_Y), LCTL(KC_Z), LCTL(KC_S)
    {0x03C0, 0x1DB8, 0x33CC, 0x366C, 0x3C3C, 0x781E, 0x781E, 0x3C3C, 0x366C, 0x33CC, 0x1DB8, 0x03C0, 0x0000, 0x0000, 0x0000, 0x0000}},
   {"MACROS", 0xB4BB,
    {"-", "-", "-", "-", "SHIFT", "-", "-", "-", "CTRL", "ALT"},

@@ -91,12 +91,12 @@
       "keys": [
         {
           "label": "Z",
-          "tap": "KC_Z",
+          "tap": "KC_Y",
           "hold": "KC_NO"
         },
         {
           "label": "Y",
-          "tap": "KC_Y",
+          "tap": "KC_Z",
           "hold": "KC_NO"
         },
         {
@@ -321,12 +321,12 @@
       "keys": [
         {
           "label": "UNDO",
-          "tap": "LCTL(KC_Z)",
+          "tap": "LCTL(KC_Y)",
           "hold": "KC_NO"
         },
         {
           "label": "REDO",
-          "tap": "LCTL(KC_Y)",
+          "tap": "LCTL(KC_Z)",
           "hold": "KC_NO"
         },
         {
@@ -447,8 +447,8 @@
         }
       ],
       "encoder": {
-        "ccw": "LCTL(KC_Z)",
-        "cw": "LCTL(KC_Y)",
+        "ccw": "LCTL(KC_Y)",
+        "cw": "LCTL(KC_Z)",
         "press": "LCTL(KC_S)"
       }
     },
