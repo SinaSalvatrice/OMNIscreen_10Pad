@@ -31,6 +31,7 @@ fi
 # The QMK header must reflect the editable design spec before copying sources.
 if command -v python3 >/dev/null 2>&1; then
     python3 "$PROJECT_ROOT/scripts/generate_layer_system.py"
+    python3 "$PROJECT_ROOT/scripts/generate_editor_icons.py"
 elif [[ ! -f "$PROJECT_ROOT/keyboards/$KEYBOARD/keymaps/$KEYMAP/generated_layers.h" ]]; then
     echo "ERROR: Python 3 required to generate layer metadata" >&2
     exit 4

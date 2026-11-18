@@ -1,5 +1,6 @@
 @echo off
 setlocal EnableExtensions
+set "MSYSTEM=MINGW64"
 
 set "PROJECT_ROOT=%~dp0"
 set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"

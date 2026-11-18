@@ -2,7 +2,9 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from struct import iter_unpack
+from struct import iter_unpack, pack
+
+from profile import PROFILE_SIZE
 
 import hid
 
@@ -31,6 +33,13 @@ class Detection:
     clockwise: int
     counterclockwise: int
     encoder_pushes: int
+    slider_raw: int | None = None
+    slider_percent: int | None = None
+    gesture: int = 0
+    sensor_status: int = 0
+    sensor_xyz: tuple = (0, 0, 0)
+    display_mode: bool = True
+    expander: bool = False
 
 
 class OmniPad:
@@ -39,6 +48,7 @@ class OmniPad:
         self.usb_id = usb_id
         self.protocol = self._integer((0x01,), 1, 2)
         self.firmware = self._integer((0x02, 0x04), 2, 4)
+        self._device.set_nonblocking(0)
         self.layer_count = self._integer((0x11,), 1, 1)
         if self.protocol < 12 or not 1 <= self.layer_count <= 32:
             raise ViaError("Diese VIA-Firmware wird vom Editor nicht unterstützt.")
@@ -74,12 +84,14 @@ class OmniPad:
     def close(self):
         self._device.close()
 
-    def _exchange(self, request, echo=None):
+    def _exchange(self, request, echo=None, timeout=900):
         request = bytes(request)
+        if len(request) > 32:
+            raise ValueError("USB-Befehl ist zu lang.")
         packet = b"\x00" + request.ljust(32, b"\x00")
         if self._device.write(packet) != len(packet):
             raise ViaError("USB-Bericht konnte nicht vollständig gesendet werden.")
-        reply = bytes(self._device.read(32, 900))
+        reply = bytes(self._device.read(32, timeout))
         if reply[:1] == b"\xff":
             raise UnsupportedCommand("Die Firmware unterstützt diesen VIA-Befehl nicht.")
         prefix = request if echo is None else request[:echo]
@@ -162,9 +174,49 @@ class OmniPad:
             "lighting": lighting,
         }
 
+    def capabilities(self):
+        try:
+            reply = self._exchange((0x08, 0, 0x71))
+        except UnsupportedCommand:
+            return None
+        if reply[3:7] != b"OMP2" or int.from_bytes(reply[9:11], "little") != PROFILE_SIZE:
+            raise UnsupportedCommand("Unbekannte OmniPad-Profilversion.")
+        return {"enabled": bool(reply[7]), "max_layers": reply[8],
+                "generation": int.from_bytes(reply[11:15], "little"), "expander": bool(reply[15])}
+
+    def read_profile(self):
+        data = bytearray()
+        for offset in range(0, PROFILE_SIZE, 25):
+            count = min(25, PROFILE_SIZE - offset)
+            reply = self._exchange((0x08, 0, 0x72, offset & 255, offset >> 8, count))
+            data.extend(reply[6:6 + count])
+        return bytes(data)
+
+    def write_profile(self, payload, generation, progress=None):
+        if len(payload) != PROFILE_SIZE:
+            raise ValueError("Ungültige Profilgröße.")
+        checksum = 2166136261
+        for byte in payload:
+            checksum = ((checksum ^ byte) * 16777619) & 0xFFFFFFFF
+        self._exchange(bytes((0x07, 0, 0x73)) + pack("<2I", checksum, generation))
+        for offset in range(0, len(payload), 25):
+            chunk = payload[offset:offset + 25]
+            self._exchange(bytes((0x07, 0, 0x74, offset & 255, offset >> 8, len(chunk))) + chunk)
+            if progress:
+                progress(offset + len(chunk), len(payload))
+        # Committing persistent storage can take longer than a regular HID read.
+        self._exchange((0x07, 0, 0x75), timeout=12000)
+        verified = self.read_profile()
+        if verified != payload:
+            raise ViaError("Das zurückgelesene Profil weicht von der Übertragung ab.")
+        return self.capabilities()
+
+    def diagnose(self, enabled):
+        self._exchange((0x07, 0, 0x76, int(enabled)))
+
     def detection(self):
         reply = self._exchange((0x08, 0, 0x70))
-        if reply[3:8] != b"OMNI\x01":
+        if reply[3:7] != b"OMNI" or reply[7] not in (1, 2):
             raise UnsupportedCommand("Der Detect-Inspektor benötigt die passende Firmware.")
         return Detection(
             active_layer=reply[8],
@@ -175,4 +227,12 @@ class OmniPad:
             clockwise=reply[15],
             counterclockwise=reply[16],
             encoder_pushes=reply[17],
+            slider_raw=int.from_bytes(reply[18:20], "little") if reply[7] >= 2 and reply[21] else None,
+            slider_percent=reply[20] if reply[7] >= 2 and reply[21] else None,
+            gesture=reply[22] if reply[7] >= 2 else 0,
+            sensor_status=reply[23] if reply[7] >= 2 else 0,
+            sensor_xyz=tuple(int.from_bytes(reply[index:index + 2], "little", signed=True)
+                             for index in (24, 26, 28)) if reply[7] >= 2 else (0, 0, 0),
+            display_mode=bool(reply[30]) if reply[7] >= 2 else True,
+            expander=bool(reply[31]) if reply[7] >= 2 else False,
         )
