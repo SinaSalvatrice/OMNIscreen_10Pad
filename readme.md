@@ -284,47 +284,99 @@ QMK's built-in effect range is limited to 14 LEDs and does not animate the
 Frame accidentally. No GitHub Actions or remote flashing are used.
 
 
-## ADXL345 movement sensor — Detection / MATRIX screen (prepared)
+## MCP23017 matrix expander + ADXL345 sensor (optional I2C upgrade)
 
-The ADXL345 I2C driver and a diagnostics readout are implemented in
-`keyboards/icst7789v/keymaps/default/cc_adxl345.h`. During the existing MATRIX
-test, a two-line footer can display **ADXL OK** plus changing raw X/Y/Z values,
-or SEARCHING, NOT FOUND, WRONG CHIP ID, or I2C ERROR. It never triggers macros
-or USB keyboard actions. Press K0 three times to open MATRIX (or use its menu
-item); press encoder PUSH to exit. Only while MATRIX is open are sensor registers
-polled, about every 170 ms.
+The original firmware uses GP0 for matrix column 3 and GP1 is unused. **Do not
+connect an ADXL345 to GP0 while the original matrix wire is still attached.**
 
-**Important: not active with the current matrix wiring.** The real
-`keyboard.json` uses **GP0 as matrix column 4** (positions R0C3, R1C3, R2C3);
-only GP1 is currently unassigned. Connecting SDA to GP0 while it is still a
-matrix input would interfere with keys, so the firmware deliberately defaults
-to `CC_ADXL345_ENABLE 0` and shows `ADXL OFF - GP0 IS MATRIX` in Detection.
+This branch offers two explicit firmware configurations:
+- `MCP23017_MATRIX=no` (default): original 3×4 GPIO matrix, no ADXL345 polling.
+  Detection screen says `GPIO MATRIX` and `ADXL OFF - GP0 IS MATRIX`.
+- `MCP23017_MATRIX=yes`: 3×4 keyboard matrix read entirely through MCP23017
+  using a QMK custom `lite` matrix scanner; ADXL345 sensor active.
+  Detection header shows `MCP OK` / `MCP ERROR`, and footer shows sensor
+  status and raw signed X/Y/Z acceleration samples.
 
-A viable hardware upgrade is to put the matrix on an **I2C I/O expander**
-(e.g. MCP23017 at a non-conflicting address) while keeping the ADXL345 on the
-same shared SDA/SCL bus. That requires **wiring the affected matrix lines to
-the expander and implementing a corresponding QMK matrix scanner** before
-releasing GP0 — the expander/scanner are **not implemented in this change**.
-Do not simply enable the switch with the present wiring.
+**Both chips share the same I2C0 bus: GP0 SDA / GP1 SCL.**
+Connect both modules to the *same* SDA, SCL, 3V3 and GND rails.
+The modules are different I2C addresses: MCP23017 `0x20`, ADXL345 `0x53`.
 
-Once GP0 is actually released and the matrix definition/scanner is updated,
-set `CC_ADXL345_GP0_RELEASED 1` and `CC_ADXL345_ENABLE 1` in `config.h`.
-The planned sensor wiring is:
+### MCP23017 to RP2040-Zero
 
-| ADXL345 pad | RP2040-Zero |
+| MCP23017 pin | RP2040-Zero / power |
 | --- | --- |
-| SDA | GP0 (after matrix relocation only) |
+| SDA | GP0 |
 | SCL | GP1 |
+| VDD / VCC | 3V3 |
+| VSS / GND | GND |
+| A0, A1, A2 | GND (select address 0x20) |
+| RESET / RST (active LOW) | 3V3, preferably through a pull-up if not supplied on breakout |
+| INTA, INTB | Leave unconnected; keyboard scan uses polling |
+
+### Move **all seven** original matrix wires
+
+Unplug / desolder the existing row/column wires at RP2040-Zero and attach
+their *same* other ends to the MCP23017 breakout as follows:
+
+| Previously on RP2040 | New MCP23017 pin | Matrix signal |
+| --- | --- | --- |
+| GP12 | GPA0 | Row R0 |
+| GP13 | GPA1 | Row R1 |
+| GP14 | GPA2 | Row R2 |
+| GP15 | GPB0 | Column C0 |
+| GP26 | GPB1 | Column C1 |
+| GP27 | GPB2 | Column C2 |
+| GP0 | GPB3 | Column C3 |
+
+The existing key diodes remain as assembled. The scanner retains
+`ROW2COL` semantics: each column is pulled LOW one at a time, while the
+three rows have MCP23017 internal pull-ups. K0, encoder, analog slider,
+display and LED lines continue to use the RP2040 directly.
+
+### ADXL345 on that same bus
+
+| ADXL345 pin | Connection |
+| --- | --- |
+| SDA | GP0 (shared with MCP23017 SDA) |
+| SCL | GP1 (shared with MCP23017 SCL) |
 | VCC | 3V3 |
 | GND | GND |
-| CS | 3V3 (select I2C) |
-| SDO | GND (I2C address 0x53) |
-| INT1 / INT2 | Unconnected (polling) |
+| CS | 3V3 (I2C mode, not SPI) |
+| SDO | GND (address 0x53) |
+| INT1 / INT2 | Leave unconnected (polling) |
 
-The I2C driver uses I2C0 at 3.3 V and expects I2C pull-ups on SDA/SCL
-(check the breakout for fitted resistors). Detection verifies ADXL345
-`DEVID=0xE5`, enables measurements and reads signed X/Y/Z samples from
-registers `0x32..0x37`. It is not a complete gesture/macro implementation.
+Use 3.3 V only for I2C pull-ups. One effective pair of pull-up resistors
+(typically 4.7 kOhm SDA→3V3 and SCL→3V3) is required for the entire bus.
+Check whether **both breakout boards already have pull-ups** to avoid too
+much parallel loading. Do not connect 5 V signals to RP2040 GPIO.
 
-Build/flash locally only. No GitHub Actions. Never assume the ADXL345 is
-functional until the display actually shows changing X/Y/Z values on real hardware.
+### Firmware and detection screen
+
+For the original, unchanged wiring:
+
+```bat
+set MCP23017_MATRIX=no
+build_uf2.bat
+```
+
+**Only after wiring the full matrix to the MCP23017:**
+
+```bat
+set MCP23017_MATRIX=yes
+build_uf2.bat
+```
+
+Do not load the `yes` firmware onto the old wiring: without MCP23017 present,
+the custom scanner returns **no pressed matrix keys**.
+
+After flashing, enter the Detection / MATRIX screen by pressing K0 three times
+(or using the MATRIX menu item). Confirm `MCP OK` and `ADXL OK`; tilt the
+board to see X/Y/Z change. `MCP ERROR` indicates no usable expander response.
+The ADXL345 code verifies `DEVID=0xE5`, enables measurement and polls
+registers `0x32..0x37` about every 170 ms while Detection is open. It does
+**not** yet send gestures, layer switches or host macros. For keyboard usability,
+the MCP23017 matrix scanner polls continuously even when the Detection page is
+closed. I2C errors release any stored pressed keys to prevent stuck keys.
+
+This change has not been hardware-verified. Firmware changes stay on the PR
+branch until a local build and hardware checks complete. No GitHub Actions.
