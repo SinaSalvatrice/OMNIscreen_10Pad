@@ -284,99 +284,109 @@ QMK's built-in effect range is limited to 14 LEDs and does not animate the
 Frame accidentally. No GitHub Actions or remote flashing are used.
 
 
-## MCP23017 matrix expander + ADXL345 sensor (optional I2C upgrade)
+## PCF8575 expander + ADXL345 sensor (optional I2C upgrade)
 
-The original firmware uses GP0 for matrix column 3 and GP1 is unused. **Do not
-connect an ADXL345 to GP0 while the original matrix wire is still attached.**
+**Actual photographed hardware:** the blue 16-channel expander breakout is a
+**PCF8575**, not an MCP23017. The two chips are NOT software-compatible:
+PCF8575 has 16 quasi-bidirectional I/O lines (`P00..P07`, `P10..P17`)
+and two-byte read/write port transfers, not MCP23017 configuration registers.
 
-This branch offers two explicit firmware configurations:
-- `MCP23017_MATRIX=no` (default): original 3×4 GPIO matrix, no ADXL345 polling.
-  Detection screen says `GPIO MATRIX` and `ADXL OFF - GP0 IS MATRIX`.
-- `MCP23017_MATRIX=yes`: 3×4 keyboard matrix read entirely through MCP23017
-  using a QMK custom `lite` matrix scanner; ADXL345 sensor active.
-  Detection header shows `MCP OK` / `MCP ERROR`, and footer shows sensor
-  status and raw signed X/Y/Z acceleration samples.
+The original firmware uses GP0 as matrix column 3. GP1 is the only unused
+RP2040 GPIO. **Do not attach I2C SDA to GP0 until the old matrix wire has
+been physically moved to the PCF8575.** The PR adds two build variants:
+- `PCF8575_MATRIX=no` (default): preserve original RP2040 GPIO keyboard
+  matrix; ADXL345 remains disabled. Display says `GPIO MATRIX`.
+- `PCF8575_MATRIX=yes`: use PCF8575 for all seven keyboard matrix wires;
+  enable ADXL345 I2C diagnostics.
 
-**Both chips share the same I2C0 bus: GP0 SDA / GP1 SCL.**
-Connect both modules to the *same* SDA, SCL, 3V3 and GND rails.
-The modules are different I2C addresses: MCP23017 `0x20`, ADXL345 `0x53`.
+Both devices share RP2040-Zero **GP0 SDA + GP1 SCL**, plus 3V3/GND.
 
-### MCP23017 to RP2040-Zero
+### PCF8575 breakout connections shown in photo
 
-| MCP23017 pin | RP2040-Zero / power |
+The five pins on the **left edge of the pictured board** read from top
+to bottom: **GND, VCC, SDA, SCL, INT**. Wire as follows:
+
+| PCF8575 photo marking | RP2040-Zero |
 | --- | --- |
+| GND | GND |
+| VCC | 3V3 (not 5V) |
 | SDA | GP0 |
 | SCL | GP1 |
-| VDD / VCC | 3V3 |
-| VSS / GND | GND |
-| A0, A1, A2 | GND (select address 0x20) |
-| RESET / RST (active LOW) | 3V3, preferably through a pull-up if not supplied on breakout |
-| INTA, INTB | Leave unconnected; keyboard scan uses polling |
+| INT | Leave unconnected: matrix is polled |
 
-### Move **all seven** original matrix wires
+On the photo the **bottom row** reads `GND VDD P00 P01 P02 P03 P04 P05 P06 P07`
+from left to right. The **top row** reads `GND VDD P17 P16 P15 P14 P13 P12 P11 P10`
+from left to right. You can wire the five left-edge contacts for bus/power;
+there is no need to solder both 3V3/GND connections.
 
-Unplug / desolder the existing row/column wires at RP2040-Zero and attach
-their *same* other ends to the MCP23017 breakout as follows:
+### Rewire the existing 3x4 key matrix
 
-| Previously on RP2040 | New MCP23017 pin | Matrix signal |
+Move the seven physical matrix wires from the RP2040 to these markings
+on the PCF8575. This retains the existing QMK row/column and VIA layout:
+
+| Original RP2040 pin | New PCF8575 pad | Purpose |
 | --- | --- | --- |
-| GP12 | GPA0 | Row R0 |
-| GP13 | GPA1 | Row R1 |
-| GP14 | GPA2 | Row R2 |
-| GP15 | GPB0 | Column C0 |
-| GP26 | GPB1 | Column C1 |
-| GP27 | GPB2 | Column C2 |
-| GP0 | GPB3 | Column C3 |
+| GP12 | P00 | Row R0 |
+| GP13 | P01 | Row R1 |
+| GP14 | P02 | Row R2 |
+| GP15 | P10 | Column C0 |
+| GP26 | P11 | Column C1 |
+| GP27 | P12 | Column C2 |
+| GP0 | P13 | Column C3 |
 
-The existing key diodes remain as assembled. The scanner retains
-`ROW2COL` semantics: each column is pulled LOW one at a time, while the
-three rows have MCP23017 internal pull-ups. K0, encoder, analog slider,
-display and LED lines continue to use the RP2040 directly.
+**The old GP0 -> matrix-column wire must be disconnected at RP2040 GP0**
+before attaching I2C SDA there. The existing keyboard diodes remain where
+they are. The custom scanner uses the existing `ROW2COL` direction,
+pulling one of P10..P13 LOW and reading the weakly pulled-up P00..P02.
+The unused PCF pins are left HIGH/released, not driven.
 
-### ADXL345 on that same bus
+### ADXL345 on the same GP0/GP1 bus
 
-| ADXL345 pin | Connection |
+| ADXL345 photo marking | Connect to |
 | --- | --- |
-| SDA | GP0 (shared with MCP23017 SDA) |
-| SCL | GP1 (shared with MCP23017 SCL) |
+| SDA | GP0 (same net as PCF8575 SDA) |
+| SCL | GP1 (same net as PCF8575 SCL) |
 | VCC | 3V3 |
 | GND | GND |
-| CS | 3V3 (I2C mode, not SPI) |
-| SDO | GND (address 0x53) |
-| INT1 / INT2 | Leave unconnected (polling) |
+| CS | 3V3 (I2C mode) |
+| SDO | GND (I2C address 0x53) |
+| INT1, INT2 | Leave unconnected |
 
-Use 3.3 V only for I2C pull-ups. One effective pair of pull-up resistors
-(typically 4.7 kOhm SDA→3V3 and SCL→3V3) is required for the entire bus.
-Check whether **both breakout boards already have pull-ups** to avoid too
-much parallel loading. Do not connect 5 V signals to RP2040 GPIO.
+The PCF8575 normally responds at 7-bit I2C address `0x20` with all address
+jumpers A0/A1/A2 low; inspect this particular board's solder jumpers to
+confirm. The ADXL345 address will be `0x53` when SDO=GND.
+Use 3.3V I2C pull-ups (typically one pair 4.7k on SDA/SCL for the bus).
+Check whether the two modules already include pull-ups, and avoid any
+installed pull-up connected to 5V. PCF8575 P00..P02 additionally provide
+weak released/high inputs; optional external 10k-to-3V3 pull-ups on
+those three row lines may improve noise immunity if needed.
 
-### Firmware and detection screen
+### Local firmware build and Detection mode
 
-For the original, unchanged wiring:
-
+Keep the original GPIO wiring:
 ```bat
-set MCP23017_MATRIX=no
+set PCF8575_MATRIX=no
 build_uf2.bat
 ```
 
-**Only after wiring the full matrix to the MCP23017:**
-
+**Only after all seven matrix wires are moved to the PCF8575:**
 ```bat
-set MCP23017_MATRIX=yes
+set PCF8575_MATRIX=yes
 build_uf2.bat
 ```
 
-Do not load the `yes` firmware onto the old wiring: without MCP23017 present,
-the custom scanner returns **no pressed matrix keys**.
+For this upgraded build, QMK reads all 10 keys through the PCF8575
+custom matrix scanner, preserving the seven VIA layers and fixed
+Shift/Ctrl/Alt keys. No I2C module may share the 3.3V SDA/SCL lines while
+powered at 5V. If PCF8575 is disconnected, all key signals are released
+and no matrix keys will register.
 
-After flashing, enter the Detection / MATRIX screen by pressing K0 three times
-(or using the MATRIX menu item). Confirm `MCP OK` and `ADXL OK`; tilt the
-board to see X/Y/Z change. `MCP ERROR` indicates no usable expander response.
-The ADXL345 code verifies `DEVID=0xE5`, enables measurement and polls
-registers `0x32..0x37` about every 170 ms while Detection is open. It does
-**not** yet send gestures, layer switches or host macros. For keyboard usability,
-the MCP23017 matrix scanner polls continuously even when the Detection page is
-closed. I2C errors release any stored pressed keys to prevent stuck keys.
+Enter the Detection/MATRIX screen with **K0 three times**. Top status displays
+`PCF OK` or `PCF ERROR`; the bottom area shows ADXL345 status plus
+signed live X/Y/Z acceleration readings when connected and functioning.
+The ADXL345 only polls while Detection is visible; no motion gestures or
+host macros are enabled yet.
 
-This change has not been hardware-verified. Firmware changes stay on the PR
-branch until a local build and hardware checks complete. No GitHub Actions.
+**Not hardware-validated or compiled in this session.** Test the new build
+locally and confirm all matrix keys plus the sensor readings before merging.
+No GitHub Actions, no automatic flashing.
