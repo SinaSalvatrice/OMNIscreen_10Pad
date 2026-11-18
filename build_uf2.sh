@@ -61,7 +61,7 @@ rm -f "${KEYBOARD}_${KEYMAP}.uf2"
 echo "Building $KEYBOARD:$KEYMAP..."
 # SKIP_GIT avoids QMK's normal full recursive submodule scan. The required
 # RP2040 submodules were initialized explicitly above.
-make SKIP_GIT=1 "$KEYBOARD:$KEYMAP"
+make SKIP_GIT=1 MCP23017_MATRIX="${MCP23017_MATRIX:-no}" "$KEYBOARD:$KEYMAP"
 
 UF2="$QMK_HOME/${KEYBOARD}_${KEYMAP}.uf2"
 if [[ ! -f "$UF2" ]]; then
