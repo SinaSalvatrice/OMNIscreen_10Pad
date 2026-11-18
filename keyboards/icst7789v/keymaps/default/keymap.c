@@ -232,4 +232,5 @@ static void lcd_init(void) {
 }
 
 // Layer UI implementation follows hardware SPI bootstrap (known good).
+#include "cc_adxl345.h"
 #include "cc_runtime.h"

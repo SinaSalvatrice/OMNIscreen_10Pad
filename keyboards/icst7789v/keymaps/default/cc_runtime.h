@@ -2,6 +2,9 @@
 #pragma once
 #include "cc_font.h"
 #include <stdio.h> // Compact numeric diagnostics for the matrix tester.
+#if CC_PCF8575_MATRIX
+extern bool cc_pcf8575_online(void);
+#endif
 #define CC_K0_TAPS_MS 250
 #define CC_K0_HOLD_MS 620
 #define CC_DEBOUNCE_MS 25
@@ -34,6 +37,9 @@ static bool cc_matrix_return_encoder_mode = true;
 static uint8_t cc_matrix_return_preview = 0;
 static bool cc_dirty = true;
 static uint16_t cc_last_draw = 0;
+#if CC_PCF8575_MATRIX
+static bool cc_pcf_last_online = false;
+#endif
 
 typedef struct {
     bool sample;
@@ -212,6 +218,10 @@ static void cc_matrix_test_enter(void) {
     cc_matrix_full_redraw = true;
     cc_slider_last_drawn = UINT16_MAX;
     cc_slider_last_sample = timer_read() - 60;
+    cc_adxl.changed = true;
+#if CC_PCF8575_MATRIX
+    cc_pcf_last_online = cc_pcf8575_online();
+#endif
     cc_dirty = true;
 }
 
@@ -313,6 +323,48 @@ static void cc_matrix_slider_widget(void) {
     cc_slider_last_drawn = cc_slider_pct;
 }
 
+// Compact read-only ADXL345 indicator in the detection screen footer.
+// Raw x/y/z samples must move when the module is tilted; the test never
+// sends motion events or macros to the host.
+static void cc_matrix_adxl_widget(void) {
+    if (!cc_adxl.changed) return;
+    char line[52];
+    uint16_t color = C_RED;
+    switch (cc_adxl.status) {
+        case CC_ADXL_OK:
+            if (cc_adxl.valid) {
+                (void)snprintf(line, sizeof(line), "ADXL OK X:%+5d Y:%+5d Z:%+5d",
+                               (int)cc_adxl.x, (int)cc_adxl.y, (int)cc_adxl.z);
+                color = C_GREEN;
+            } else {
+                (void)snprintf(line, sizeof(line), "ADXL OK  READ WAIT");
+                color = C_YELLOW;
+            }
+            break;
+        case CC_ADXL_SEARCH:
+            (void)snprintf(line, sizeof(line), "ADXL SEARCHING");
+            color = C_YELLOW;
+            break;
+        case CC_ADXL_MISSING:
+            (void)snprintf(line, sizeof(line), "ADXL NOT FOUND  ADDR 53");
+            break;
+        case CC_ADXL_BAD_ID:
+            (void)snprintf(line, sizeof(line), "ADXL WRONG CHIP ID");
+            break;
+        case CC_ADXL_IO_ERROR:
+            (void)snprintf(line, sizeof(line), "ADXL I2C ERROR");
+            break;
+        default:
+            (void)snprintf(line, sizeof(line), "ADXL OFF - GP0 IS MATRIX");
+            color = C_YELLOW;
+            break;
+    }
+    lcd_fill(0, 216, LCD_W, 24, 0x18C7);
+    cc_draw_text(7, 218, line, 1, color);
+    cc_draw_text(7, 230, "K0 1X EXIT 3X TOGGLE / PUSH EXIT", 1, C_CYAN);
+    cc_adxl.changed = false;
+}
+
 static void cc_matrix_test_screen(void) {
     if (cc_matrix_full_redraw) {
         cc_background();
@@ -320,8 +372,13 @@ static void cc_matrix_test_screen(void) {
         lcd_fill(7, 33, 109, 4, C_CYAN);
         cc_draw_text(13, 55, "MATRIX", 2, C_WHITE);
         cc_draw_text(13, 72, "4-4-2", 1, C_CYAN);
-        lcd_fill(0, 216, LCD_W, 24, 0x18C7);
-        cc_draw_text(7, 225, "K0 1X EXIT 3X TOGGLE / PUSH EXIT", 1, C_CYAN);
+#if CC_PCF8575_MATRIX
+        cc_draw_text(124, 9, cc_pcf8575_online() ? "PCF OK" : "PCF ERROR", 1,
+                     cc_pcf8575_online() ? C_GREEN : C_RED);
+#else
+        cc_draw_text(124, 9, "GPIO MATRIX", 1, C_YELLOW);
+#endif
+        cc_adxl.changed = true; // Background overwrote the last footer.
         cc_matrix_changed = (1u << CC_KEY_COUNT) - 1u;
         cc_matrix_full_redraw = false;
     }
@@ -334,6 +391,7 @@ static void cc_matrix_test_screen(void) {
         cc_matrix_slider_widget();
     }
     cc_matrix_test_status();
+    cc_matrix_adxl_widget();
 }
 
 static void cc_menu_screen(void) {
