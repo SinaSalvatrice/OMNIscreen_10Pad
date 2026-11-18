@@ -26,16 +26,15 @@
 
 #define SLIDER_ADC_PIN GP28  // ADC2; slide potentiometer signal
 
-// ADXL345 diagnostic I2C bus: GP0 (SDA) / GP1 (SCL), 0x53 when SDO=GND.
-// IMPORTANT: keyboard.json currently uses GP0 as matrix column 3!
-// Leave this off until that column is physically moved to an I2C expander
-// and the keyboard matrix implementation has been changed accordingly.
-// Enabling both uses of GP0 would break keyboard scanning.
-#define CC_ADXL345_ENABLE 0
-#define CC_ADXL345_GP0_RELEASED 0
-#if CC_ADXL345_ENABLE && !CC_ADXL345_GP0_RELEASED
-#    error "ADXL345 cannot use GP0: keyboard matrix still owns GP0. Rework the matrix first."
+// ADXL345 (0x53) and MCP23017 (0x20) share RP2040 I2C0: SDA GP0, SCL GP1.
+// GPIO-based matrix is the default for unmodified hardware.
+// Build with MCP23017_MATRIX=yes only AFTER moving all 7 row/column wires
+// from RP2040 to MCP23017 as listed in README; it also enables the ADXL345.
+// The MCP scanner takes exclusive ownership of GP0 in this configuration.
+#ifndef CC_MCP23017_MATRIX
+#    define CC_MCP23017_MATRIX 0
 #endif
+#define CC_ADXL345_ENABLE CC_MCP23017_MATRIX
 #define I2C_DRIVER I2CD0
 #define I2C1_SDA_PIN GP0
 #define I2C1_SCL_PIN GP1
