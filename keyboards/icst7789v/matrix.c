@@ -1,105 +1,103 @@
-// OMNIscreen 10Pad: optional MCP23017 matrix on the same I2C0 bus as ADXL345.
-// Select with MCP23017_MATRIX=yes at build time. GPIO matrix remains the default.
-// Wiring: rows R0..R2 -> GPA0..GPA2, columns C0..C3 -> GPB0..GPB3.
-// Existing diode direction ROW2COL: select one column LOW, read pulled-up rows.
-// The I2C expander at 0x20 uses A0/A1/A2=GND; ADXL345 uses 0x53.
+// OMNIscreen 10Pad PCF8575 16-bit I2C expander matrix.
+// Build only after rewiring the seven matrix wires to PCF8575.
+// P00,P01,P02 = three row inputs. P10,P11,P12,P13 = four column outputs.
+// ROW2COL diodes: select each column LOW, detect LOW on row inputs.
+// I2C0 is shared with ADXL345: PCF8575 0x20; ADXL345 0x53.
 #include "matrix.h"
 #include "i2c_master.h"
 #include "timer.h"
 #include <stdbool.h>
 #include <stdint.h>
 
-#define CC_MCP_ADDRESS        (0x20u << 1) // QMK I2C API expects shifted address.
-#define CC_MCP_TIMEOUT_MS     5
-#define CC_MCP_IODIRA         0x00u
-#define CC_MCP_IODIRB         0x01u
-#define CC_MCP_IOCON          0x0Au
-#define CC_MCP_GPPUA          0x0Cu
-#define CC_MCP_GPIOA          0x12u
-#define CC_MCP_OLATB          0x15u
-#define CC_MCP_ROW_MASK       0x07u
-#define CC_MCP_COLUMN_COUNT   4u
-#define CC_MCP_RETRY_MS       500u
+#define CC_PCF8575_ADDRESS          (0x20u << 1) // QMK uses shifted I2C addresses.
+#define CC_PCF8575_TIMEOUT_MS       5u
+#define CC_PCF8575_COLUMNS          4u
+#define CC_PCF8575_RETRY_MS         500u
+#define CC_PCF8575_ALL_HIGH        0xFFFFu
 
-static bool cc_mcp_ready = false;
-static uint16_t cc_mcp_last_retry = 0;
+static bool cc_pcf_ready = false;
+static uint16_t cc_pcf_last_retry = 0;
 
-bool cc_mcp23017_online(void) {
-    return cc_mcp_ready;
+// PCF8575 has NO internal configuration registers: all 16 I/Os are
+// quasi-bidirectional. Writing 1 releases a pin into weak pull-up/input.
+// First byte = P00..P07; second byte = P10..P17.
+static bool cc_pcf_write(uint16_t levels) {
+    uint8_t data[2] = {(uint8_t)levels, (uint8_t)(levels >> 8)};
+    return i2c_transmit(CC_PCF8575_ADDRESS, data, sizeof(data),
+                        CC_PCF8575_TIMEOUT_MS) == I2C_STATUS_SUCCESS;
 }
 
-static bool cc_mcp_write(uint8_t reg, uint8_t data) {
-    return i2c_write_register(CC_MCP_ADDRESS, reg, &data, 1,
-                              CC_MCP_TIMEOUT_MS) == I2C_STATUS_SUCCESS;
+static bool cc_pcf_read(uint16_t *levels) {
+    uint8_t data[2];
+    if (i2c_receive(CC_PCF8575_ADDRESS, data, sizeof(data),
+                    CC_PCF8575_TIMEOUT_MS) != I2C_STATUS_SUCCESS) {
+        return false;
+    }
+    *levels = (uint16_t)data[0] | ((uint16_t)data[1] << 8);
+    return true;
 }
 
-static bool cc_mcp_read(uint8_t reg, uint8_t *data) {
-    return i2c_read_register(CC_MCP_ADDRESS, reg, data, 1,
-                             CC_MCP_TIMEOUT_MS) == I2C_STATUS_SUCCESS;
+bool cc_pcf8575_online(void) {
+    return cc_pcf_ready;
 }
 
-// When initialization fails, do not lock the keyboard in a long retry loop.
-// Retry at most twice per second; never emit stale pressed keys.
-static bool cc_mcp_configure(void) {
-    cc_mcp_last_retry = timer_read();
-    // IOCON default BANK=0; disable SEQOP changes. Reset pin must be held HIGH.
-    // All columns start as inputs; setting the output latch LOW ahead of time
-    // makes an individual column drive low immediately after enabling it.
-    cc_mcp_ready =
-        cc_mcp_write(CC_MCP_IOCON, 0x00u) &&
-        cc_mcp_write(CC_MCP_IODIRA, 0xFFu) &&
-        cc_mcp_write(CC_MCP_IODIRB, 0xFFu) &&
-        cc_mcp_write(CC_MCP_OLATB, 0x00u) &&
-        cc_mcp_write(CC_MCP_GPPUA, CC_MCP_ROW_MASK);
-    return cc_mcp_ready;
+static bool cc_pcf_init(void) {
+    cc_pcf_last_retry = timer_read();
+    // All rows and columns released; inputs have the PCF8575 weak pull-ups.
+    cc_pcf_ready = cc_pcf_write(CC_PCF8575_ALL_HIGH);
+    return cc_pcf_ready;
 }
 
 void matrix_init_custom(void) {
     i2c_init();
-    cc_mcp_configure();
+    cc_pcf_init();
 }
 
-static bool cc_mcp_store(matrix_row_t matrix[], const matrix_row_t samples[]) {
+static bool cc_pcf_store(matrix_row_t current[], const matrix_row_t next[]) {
     bool changed = false;
     for (uint8_t row = 0; row < MATRIX_ROWS; row++) {
-        if (matrix[row] != samples[row]) {
-            matrix[row] = samples[row];
+        if (current[row] != next[row]) {
+            current[row] = next[row];
             changed = true;
         }
     }
     return changed;
 }
 
-bool matrix_scan_custom(matrix_row_t matrix[]) {
+bool matrix_scan_custom(matrix_row_t current[]) {
     matrix_row_t next[MATRIX_ROWS] = {0};
 
-    if (!cc_mcp_ready) {
-        if (timer_elapsed(cc_mcp_last_retry) >= CC_MCP_RETRY_MS) {
-            cc_mcp_configure();
+    if (!cc_pcf_ready) {
+        if (timer_elapsed(cc_pcf_last_retry) >= CC_PCF8575_RETRY_MS) {
+            cc_pcf_init();
         }
-        if (!cc_mcp_ready) return cc_mcp_store(matrix, next);
+        if (!cc_pcf_ready) return cc_pcf_store(current, next);
     }
 
     bool success = true;
-    // ROW2COL: scanning columns in turn, rows are HIGH when no key is pressed.
-    for (uint8_t column = 0; column < CC_MCP_COLUMN_COUNT; column++) {
-        const uint8_t directions = (uint8_t)~(1u << column);
-        uint8_t row_level;
-        if (!cc_mcp_write(CC_MCP_IODIRB, directions) ||
-            !cc_mcp_read(CC_MCP_GPIOA, &row_level)) {
+    for (uint8_t column = 0; column < CC_PCF8575_COLUMNS; ++column) {
+        // Keep every row and unused pin at 1; pull only P10..P13 LOW in turn.
+        uint16_t levels = (uint16_t)(CC_PCF8575_ALL_HIGH & ~(1u << (8u + column)));
+        uint16_t sampled = 0;
+        if (!cc_pcf_write(levels) || !cc_pcf_read(&sampled)) {
             success = false;
             break;
         }
-        for (uint8_t row = 0; row < MATRIX_ROWS; row++) {
-            if (!(row_level & (1u << row))) next[row] |= (matrix_row_t)(1u << column);
+        for (uint8_t row = 0; row < MATRIX_ROWS; ++row) {
+            if (!(sampled & (1u << row))) {
+                next[row] |= (matrix_row_t)(1u << column);
+            }
         }
     }
-    // Always release the selected column. All other expander pins are inputs.
-    if (!cc_mcp_write(CC_MCP_IODIRB, 0xFFu)) success = false;
+
+    // Release all columns after scan, including on failed reads.
+    if (!cc_pcf_write(CC_PCF8575_ALL_HIGH)) success = false;
+
     if (!success) {
-        cc_mcp_ready = false;
-        cc_mcp_last_retry = timer_read();
-        for (uint8_t row = 0; row < MATRIX_ROWS; row++) next[row] = 0;
+        cc_pcf_ready = false;
+        cc_pcf_last_retry = timer_read();
+        // On bus failure release any latched keys rather than leaving Ctrl stuck.
+        for (uint8_t row = 0; row < MATRIX_ROWS; ++row) next[row] = 0;
     }
-    return cc_mcp_store(matrix, next);
+    return cc_pcf_store(current, next);
 }
