@@ -1,9 +1,11 @@
 // QMK Tap Dance + dedicated K0 + dual-mode EC11 controls.
 #pragma once
+#include "cc_detect.h"
 #include "cc_via_rgb.h"
 
 static void cc_encoder_press_action(void) {
     if (cc_matrix_test_view) {
+        ++cc_detect_encoder_pushes;
         cc_matrix_test_exit(); // Encoder PUSH leaves the test without host input.
         return;
     }
@@ -194,9 +196,10 @@ void matrix_scan_user(void) {
     cc_encoder_button_update();
 }
 
-bool encoder_update_user(uint8_t index, bool clockwise) {
-    if (index != 0) return false;
+static bool cc_encoder_rotate(bool clockwise) {
     if (cc_matrix_test_view) {
+        if (clockwise) ++cc_detect_clockwise;
+        else ++cc_detect_counterclockwise;
         return false; // Never emit encoder host actions during diagnosis.
     }
     if (cc_menu_view) {
@@ -212,6 +215,15 @@ bool encoder_update_user(uint8_t index, bool clockwise) {
         return true; // QMK encoder map: VIA remaps CCW/CW independently per layer.
     }
     return false;
+}
+
+// ENCODER_MAP_ENABLE delivers rotation as key events instead of calling
+// encoder_update_user. Intercept both edges before QMK sends a host keycode.
+bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
+    (void)keycode;
+    if (!IS_ENCODEREVENT(record->event)) return true;
+    if (!record->event.pressed) return !cc_matrix_test_view && !cc_display_mode && !cc_menu_view;
+    return cc_encoder_rotate(record->event.key.row == KEYLOC_ENCODER_CW);
 }
 
 // CC Studio analog slider (GP28): relative Ctrl+Numpad+/− zoom.
