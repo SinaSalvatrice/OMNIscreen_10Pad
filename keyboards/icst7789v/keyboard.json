@@ -27,16 +27,17 @@
     "enabled": true
   },
   "matrix_pins": {
+    "custom_lite": true,
     "rows": [
-      "GP12",
-      "GP13",
-      "GP14"
+      "NO_PIN",
+      "NO_PIN",
+      "NO_PIN"
     ],
     "cols": [
-      "GP15",
-      "GP26",
-      "GP27",
-      "GP0"
+      "NO_PIN",
+      "NO_PIN",
+      "NO_PIN",
+      "NO_PIN"
     ]
   },
   "diode_direction": "ROW2COL",
