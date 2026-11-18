@@ -59,7 +59,7 @@
       "label": "Lighting",
       "content": [
         {
-          "label": "QMK Effects",
+          "label": "Main LEDs (0-13) - QMK",
           "content": [
             {
               "label": "Brightness",
@@ -153,7 +153,7 @@
           ]
         },
         {
-          "label": "One / Two Colors",
+          "label": "Main LEDs (0-13) - Palette",
           "content": [
             {
               "label": "Palette mode",
@@ -200,6 +200,90 @@
                 "id_cc_chase_speed",
                 0,
                 4
+              ]
+            }
+          ]
+        },
+        {
+          "label": "Frame LEDs (14-56)",
+          "content": [
+            {
+              "label": "Frame enabled",
+              "type": "toggle",
+              "content": [
+                "id_cc_frame_enabled",
+                0,
+                5
+              ]
+            },
+            {
+              "label": "Frame animation",
+              "type": "dropdown",
+              "options": [
+                "Solid color",
+                "Two colors: alternating",
+                "Two colors: split 21+22",
+                "Two colors: moving chase",
+                "Rainbow around frame",
+                "Breathing"
+              ],
+              "content": [
+                "id_cc_frame_effect",
+                0,
+                6
+              ]
+            },
+            {
+              "label": "Frame brightness (max 64)",
+              "type": "range",
+              "options": [
+                0,
+                64
+              ],
+              "content": [
+                "id_cc_frame_brightness",
+                0,
+                7
+              ]
+            },
+            {
+              "label": "Frame color 1",
+              "type": "color",
+              "content": [
+                "id_cc_frame_color1",
+                0,
+                8
+              ]
+            },
+            {
+              "label": "Frame color 2",
+              "type": "color",
+              "content": [
+                "id_cc_frame_color2",
+                0,
+                9
+              ]
+            },
+            {
+              "label": "Frame animation speed",
+              "type": "range",
+              "options": [
+                0,
+                255
+              ],
+              "content": [
+                "id_cc_frame_speed",
+                0,
+                10
+              ]
+            },
+            {
+              "label": "Reverse direction",
+              "type": "toggle",
+              "content": [
+                "id_cc_frame_reverse",
+                0,
+                11
               ]
             }
           ]
