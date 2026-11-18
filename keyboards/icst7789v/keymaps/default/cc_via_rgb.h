@@ -229,6 +229,7 @@ static void cc_rgb_tick(void) {
 // VIA channel 0 preserves the previous four custom main-palette IDs (1..4).
 // New Frame values use 5..11, so existing saved VIA definitions remain valid.
 void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
+    if (cc_detect_via_snapshot(data, length)) return;
     if (length < 2 || data[1] != id_custom_channel) {
         data[0] = id_unhandled;
         return;

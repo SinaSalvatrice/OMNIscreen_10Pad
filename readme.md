@@ -283,110 +283,26 @@ frame instead of one chain flush for each LED, to avoid excessive key latency.
 QMK's built-in effect range is limited to 14 LEDs and does not animate the
 Frame accidentally. No GitHub Actions or remote flashing are used.
 
+## VIA: USB manufacturer/product ID (November 2026)
 
-## PCF8575 expander + ADXL345 sensor (optional I2C upgrade)
+The former QMK example Vendor-ID `0xFEED` is rejected by VIA's current
+Draft Definition loader (`'0xFEED' is not a valid vendorId`). Both the QMK
+USB descriptor (`keyboards/icst7789v/keyboard.json`) and `via.json` now use:
 
-**Actual photographed hardware:** the blue 16-channel expander breakout is a
-**PCF8575**, not an MCP23017. The two chips are NOT software-compatible:
-PCF8575 has 16 quasi-bidirectional I/O lines (`P00..P07`, `P10..P17`)
-and two-byte read/write port transfers, not MCP23017 configuration registers.
+- USB **VID `0x4F4D`** (ASCII “OM”, chosen as a hobbyist QMK identifier).
+- USB **PID `0x7789`** (unchanged).
 
-The original firmware uses GP0 as matrix column 3. GP1 is the only unused
-RP2040 GPIO. **Do not attach I2C SDA to GP0 until the old matrix wire has
-been physically moved to the PCF8575.** The PR adds two build variants:
-- `PCF8575_MATRIX=no` (default): preserve original RP2040 GPIO keyboard
-  matrix; ADXL345 remains disabled. Display says `GPIO MATRIX`.
-- `PCF8575_MATRIX=yes`: use PCF8575 for all seven keyboard matrix wires;
-  enable ADXL345 I2C diagnostics.
+**Important:** This is a hobbyist identifier, not a USB-IF-issued Vendor ID.
+It must not be used as an assertion of ownership of a globally assigned VID.
+VIA uses the actual **firmware USB VID/PID**, so changing only `via.json`
+will NOT make the already-flashed keyboard with `VID_FEED&PID_7789` work.
 
-Both devices share RP2040-Zero **GP0 SDA + GP1 SCL**, plus 3V3/GND.
+**Procedure:** Build `build_uf2.bat` locally, flash the newly generated
+`build/ICST7789V.uf2` to RP2040-Zero via BOOTSEL, unplug/replug, then open
+VIA > Settings > Show Design tab and import the new `via.json`. Remove
+stale draft definitions and re-authorize the keyboard if prompted. In Windows
+Device Manager, the firmware should appear with `VID_4F4D&PID_7789`.
+Export existing VIA keymaps/macros before flashing whenever available.
 
-### PCF8575 breakout connections shown in photo
-
-The five pins on the **left edge of the pictured board** read from top
-to bottom: **GND, VCC, SDA, SCL, INT**. Wire as follows:
-
-| PCF8575 photo marking | RP2040-Zero |
-| --- | --- |
-| GND | GND |
-| VCC | 3V3 (not 5V) |
-| SDA | GP0 |
-| SCL | GP1 |
-| INT | Leave unconnected: matrix is polled |
-
-On the photo the **bottom row** reads `GND VDD P00 P01 P02 P03 P04 P05 P06 P07`
-from left to right. The **top row** reads `GND VDD P17 P16 P15 P14 P13 P12 P11 P10`
-from left to right. You can wire the five left-edge contacts for bus/power;
-there is no need to solder both 3V3/GND connections.
-
-### Rewire the existing 3x4 key matrix
-
-Move the seven physical matrix wires from the RP2040 to these markings
-on the PCF8575. This retains the existing QMK row/column and VIA layout:
-
-| Original RP2040 pin | New PCF8575 pad | Purpose |
-| --- | --- | --- |
-| GP12 | P00 | Row R0 |
-| GP13 | P01 | Row R1 |
-| GP14 | P02 | Row R2 |
-| GP15 | P10 | Column C0 |
-| GP26 | P11 | Column C1 |
-| GP27 | P12 | Column C2 |
-| GP0 | P13 | Column C3 |
-
-**The old GP0 -> matrix-column wire must be disconnected at RP2040 GP0**
-before attaching I2C SDA there. The existing keyboard diodes remain where
-they are. The custom scanner uses the existing `ROW2COL` direction,
-pulling one of P10..P13 LOW and reading the weakly pulled-up P00..P02.
-The unused PCF pins are left HIGH/released, not driven.
-
-### ADXL345 on the same GP0/GP1 bus
-
-| ADXL345 photo marking | Connect to |
-| --- | --- |
-| SDA | GP0 (same net as PCF8575 SDA) |
-| SCL | GP1 (same net as PCF8575 SCL) |
-| VCC | 3V3 |
-| GND | GND |
-| CS | 3V3 (I2C mode) |
-| SDO | GND (I2C address 0x53) |
-| INT1, INT2 | Leave unconnected |
-
-The PCF8575 normally responds at 7-bit I2C address `0x20` with all address
-jumpers A0/A1/A2 low; inspect this particular board's solder jumpers to
-confirm. The ADXL345 address will be `0x53` when SDO=GND.
-Use 3.3V I2C pull-ups (typically one pair 4.7k on SDA/SCL for the bus).
-Check whether the two modules already include pull-ups, and avoid any
-installed pull-up connected to 5V. PCF8575 P00..P02 additionally provide
-weak released/high inputs; optional external 10k-to-3V3 pull-ups on
-those three row lines may improve noise immunity if needed.
-
-### Local firmware build and Detection mode
-
-Keep the original GPIO wiring:
-```bat
-set PCF8575_MATRIX=no
-build_uf2.bat
-```
-
-**Only after all seven matrix wires are moved to the PCF8575:**
-```bat
-set PCF8575_MATRIX=yes
-build_uf2.bat
-```
-
-For this upgraded build, QMK reads all 10 keys through the PCF8575
-custom matrix scanner, preserving the seven VIA layers and fixed
-Shift/Ctrl/Alt keys. No I2C module may share the 3.3V SDA/SCL lines while
-powered at 5V. If PCF8575 is disconnected, all key signals are released
-and no matrix keys will register.
-
-Enter the Detection/MATRIX screen with **K0 three times**. Top status displays
-`PCF OK` or `PCF ERROR`; the bottom area shows ADXL345 status plus
-signed live X/Y/Z acceleration readings when connected and functioning.
-The ADXL345 only polls while Detection is visible; no motion gestures or
-host macros are enabled yet.
-
-**Not hardware-validated or compiled in this session.** Test the new build
-locally and confirm all matrix keys plus the sensor readings before merging.
-No GitHub Actions, no automatic flashing.
+The seven existing layers, custom RGB menus, 14 main LEDs and 43 Frame LEDs
+remain unchanged. No GitHub Actions.
