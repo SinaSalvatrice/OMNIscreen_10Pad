@@ -87,7 +87,7 @@ void keyboard_post_init_user(void) {
     gpio_set_pin_input_high(ENCODER_SW);
     gpio_set_pin_input_high(K0_SW);
 #ifdef RGBLIGHT_ENABLE
-    cc_rgb_load(); // Restore VIA palette; do not override VIA/QMK RGB EEPROM effects.
+    cc_rgb_load(); // Restrict QMK RGB effects to LEDs 0..13; load independent Frame settings.
 #endif
     layer_move(1); // Default is layer 1 on every USB boot.
     lcd_init(); // Known-good GPIO bootstrap then QMK HW SPI.

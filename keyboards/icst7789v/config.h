@@ -15,7 +15,8 @@
 
 // K9 (Ctrl) detects two clean taps within this window without delaying Ctrl.
 #define CC_K9_DOUBLE_TAP_MS 240
-#define EECONFIG_USER_DATA_SIZE 8
+// v2 custom lighting data stores the original 14-LED palette plus Frame settings.
+#define EECONFIG_USER_DATA_SIZE 17
 #define VIA_FIRMWARE_VERSION 3
 
 #define TFT_CS_PIN GP6
@@ -35,12 +36,18 @@
 // Keep the QP display awake while diagnosing the hardware.
 #define QUANTUM_PAINTER_DISPLAY_TIMEOUT 0
 
-// 14 WS2812/SK6812 LEDs in one data chain: original 10 plus 4 under TFT. First DIN on GP29.
-// For bring-up, keep power demand modest; RGBLight clips values at 64/255.
+// 57 addressable RGB LEDs on ONE serial data chain (GP29):
+// LED 0..13 = original 14 key/display LEDs; LED 14..56 = 43 Frame LEDs.
+// Frame DIN connects after LED 13 DOUT. Only the logical zones are separate.
+// Supply high-current LEDs from an adequately rated external 5V rail.
 #define WS2812_DI_PIN GP29
-#define RGBLIGHT_LED_COUNT 14
+#define CC_RGB_MAIN_LED_COUNT 14
+#define CC_RGB_FRAME_LED_COUNT 43
+#define CC_RGB_FRAME_LED_START CC_RGB_MAIN_LED_COUNT
+#define RGBLIGHT_LED_COUNT 57
 #define RGBLIGHT_LIMIT_VAL 64
-// Every LED displays a different hue and the rainbow moves automatically.
+// Built-in QMK effects are restricted in firmware to the first 14 LEDs.
+// Frame LEDs have independent power/effect/brightness/colors via VIA channel 0.
 #define RGBLIGHT_EFFECT_RAINBOW_SWIRL
 
 #define RGBLIGHT_EFFECT_BREATHING

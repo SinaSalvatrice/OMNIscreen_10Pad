@@ -238,3 +238,47 @@ Strg+Plus/Minus-Zoom ist ggf. eine eigene App-Kombination nötig.
 QWERTZ-Layout ausgelegt: QMK sendet für „Z“ die US-HID-Position `KC_Y`.
 Bei Umstellung des PC-Layouts auf US müssen die beiden Belegungen in VIA
 entsprechend angepasst werden.
+
+## Additional 43 Frame LEDs — second independent RGB zone
+
+The single GP29 WS2812/SK6812 chain now has **57 LEDs**:
+
+| Logical zone | Physical LED index (zero-based) | Count | Driver |
+|---|---|---:|---|
+| Original main LEDs (keys/display) | 0–13 | 14 | QMK RGBLight / existing VIA main palette |
+| Frame LEDs, appended after the original 14 | 14–56 | **43** | Independent custom Frame renderer |
+
+**Wiring:** connect the DIN of the first Frame LED to the DOUT of LED 13,
+then daisy-chain the remaining 42 Frame LEDs. Common GND is mandatory.
+All LEDs still use the existing GP29 data output; **no second GPIO** needed.
+The two zones are logically separate, not two electrically independent ports.
+
+**Power supply warning:** 57 RGB LEDs can theoretically require around
+**3.42 A at 5 V** at maximum full-white (57 × 60 mA), of which the Frame
+alone could use about **2.58 A**. Provide a correctly sized external regulated
+5 V supply, common ground, suitable wiring / power injection and preferably a
+3.3 V to 5 V data level shifter. Do **not** power this array through the
+RP2040-Zero 3V3 pin. The firmware caps both zones at 64/255 brightness,
+but this is not a substitute for correctly rated hardware.
+
+In VIA > **Lighting** there are three submenus:
+1. Main LEDs (0–13) – QMK: normal QMK effect, RGB color, speed and brightness.
+2. Main LEDs (0–13) – Palette: existing one/two-color choices.
+3. **Frame LEDs (14–56):** independent on/off, effect (solid, alternating,
+   21+22 split, moving two-color chase, rainbow, breathing), own brightness,
+   two colors, speed and reverse direction.
+
+The default Frame state is **enabled, solid warm color, brightness 24/255**.
+Switching off the main QMK RGBLight does **not** switch off the Frame LEDs,
+and the Frame can be switched off without affecting the main LEDs.
+
+**Configuration persistence:** Frame and existing main palette settings are
+stored together in the QMK user EEPROM datablock (v2, 17 bytes). The first
+8 bytes match the old v1 layout, allowing the main palette to be migrated.
+QMK's VIA keymap storage location may shift after the datablock expansion;
+**export the current VIA keymap/macros before flashing** and reload as needed.
+
+The Frame uses a single buffered WS2812 flush for all 43 LEDs per animation
+frame instead of one chain flush for each LED, to avoid excessive key latency.
+QMK's built-in effect range is limited to 14 LEDs and does not animate the
+Frame accidentally. No GitHub Actions or remote flashing are used.
