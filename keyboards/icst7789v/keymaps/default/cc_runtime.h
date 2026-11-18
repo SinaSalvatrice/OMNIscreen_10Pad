@@ -37,6 +37,9 @@ static bool cc_matrix_return_encoder_mode = true;
 static uint8_t cc_matrix_return_preview = 0;
 static bool cc_dirty = true;
 static uint16_t cc_last_draw = 0;
+#if CC_MCP23017_MATRIX
+static bool cc_mcp_last_online = false;
+#endif
 
 typedef struct {
     bool sample;
@@ -216,6 +219,9 @@ static void cc_matrix_test_enter(void) {
     cc_slider_last_drawn = UINT16_MAX;
     cc_slider_last_sample = timer_read() - 60;
     cc_adxl.changed = true;
+#if CC_MCP23017_MATRIX
+    cc_mcp_last_online = cc_mcp23017_online();
+#endif
     cc_dirty = true;
 }
 
@@ -366,6 +372,12 @@ static void cc_matrix_test_screen(void) {
         lcd_fill(7, 33, 109, 4, C_CYAN);
         cc_draw_text(13, 55, "MATRIX", 2, C_WHITE);
         cc_draw_text(13, 72, "4-4-2", 1, C_CYAN);
+#if CC_MCP23017_MATRIX
+        cc_draw_text(124, 9, cc_mcp23017_online() ? "MCP OK" : "MCP ERROR", 1,
+                     cc_mcp23017_online() ? C_GREEN : C_RED);
+#else
+        cc_draw_text(124, 9, "GPIO MATRIX", 1, C_YELLOW);
+#endif
         cc_adxl.changed = true; // Background overwrote the last footer.
         cc_matrix_changed = (1u << CC_KEY_COUNT) - 1u;
         cc_matrix_full_redraw = false;
