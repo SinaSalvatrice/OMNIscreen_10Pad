@@ -26,15 +26,15 @@
 
 #define SLIDER_ADC_PIN GP28  // ADC2; slide potentiometer signal
 
-// ADXL345 (0x53) and MCP23017 (0x20) share RP2040 I2C0: SDA GP0, SCL GP1.
-// GPIO-based matrix is the default for unmodified hardware.
-// Build with MCP23017_MATRIX=yes only AFTER moving all 7 row/column wires
-// from RP2040 to MCP23017 as listed in README; it also enables the ADXL345.
-// The MCP scanner takes exclusive ownership of GP0 in this configuration.
-#ifndef CC_MCP23017_MATRIX
-#    define CC_MCP23017_MATRIX 0
+// ADXL345 (0x53) and PCF8575 (0x20) share RP2040 I2C0: SDA GP0, SCL GP1.
+// GPIO matrix remains default for unmodified hardware.
+// Build with PCF8575_MATRIX=yes only AFTER moving all seven matrix wires
+// from RP2040 to PCF8575 as documented in README.
+// PCF8575 is a quasi-bidirectional expander (NOT register-mapped MCP23017).
+#ifndef CC_PCF8575_MATRIX
+#    define CC_PCF8575_MATRIX 0
 #endif
-#define CC_ADXL345_ENABLE CC_MCP23017_MATRIX
+#define CC_ADXL345_ENABLE CC_PCF8575_MATRIX
 #define I2C_DRIVER I2CD0
 #define I2C1_SDA_PIN GP0
 #define I2C1_SCL_PIN GP1
