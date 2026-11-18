@@ -306,3 +306,33 @@ Export existing VIA keymaps/macros before flashing whenever available.
 
 The seven existing layers, custom RGB menus, 14 main LEDs and 43 Frame LEDs
 remain unchanged. No GitHub Actions.
+
+
+### keyboard.json: custom PCF8575 matrix vs. legacy GPIO mapping
+
+The primary `keyboards/icst7789v/keyboard.json` now describes the PCF8575
+hardware variant with `"matrix_pins": {"custom_lite": true, "rows":
+["NO_PIN", "NO_PIN", "NO_PIN"], "cols": ["NO_PIN", "NO_PIN", "NO_PIN",
+"NO_PIN"]}`. These `NO_PIN` entries keep the QMK 3×4 matrix dimensions
+without falsely assigning matrix signals to RP2040 GPIOs. The **actual**
+PCF8575 pins are **not MCU pin names** and must not be placed in QMK's
+`matrix_pins.rows` / `cols` lists; the custom `matrix.c` scans P00–P02
+as rows and P10–P13 as columns over I2C0 on RP2040 GP0/GP1.
+
+The original direct-wired QMK configuration is saved in
+`keyboards/icst7789v/keyboard_gpio.json`. During `build_uf2.bat` /
+`build_uf2.sh` the correct QMK `keyboard.json` is selected **only in the
+staging copy under QMK_HOME**:
+
+| Build selector | Matrix backend | Staged keyboard JSON |
+| --- | --- | --- |
+| `PCF8575_MATRIX=no` | RP2040 direct GPIO | `keyboard_gpio.json` copied as `keyboard.json` |
+| `PCF8575_MATRIX=yes` | PCF8575 custom lite on I2C | Primary `keyboard.json` |
+
+This preserves the rest of the JSON structure, physical key positions, VIA
+layers and encoder metadata unchanged. **After rewiring to PCF8575, build with
+`PCF8575_MATRIX=yes`.** A plain default build remains the old GPIO
+configuration for safety; it is not suitable for the rewired matrix.
+
+The build still needs compilation and validation on actual hardware before
+merging/deploying. Do not enable GitHub Actions.
