@@ -282,3 +282,49 @@ The Frame uses a single buffered WS2812 flush for all 43 LEDs per animation
 frame instead of one chain flush for each LED, to avoid excessive key latency.
 QMK's built-in effect range is limited to 14 LEDs and does not animate the
 Frame accidentally. No GitHub Actions or remote flashing are used.
+
+
+## ADXL345 movement sensor — Detection / MATRIX screen (prepared)
+
+The ADXL345 I2C driver and a diagnostics readout are implemented in
+`keyboards/icst7789v/keymaps/default/cc_adxl345.h`. During the existing MATRIX
+test, a two-line footer can display **ADXL OK** plus changing raw X/Y/Z values,
+or SEARCHING, NOT FOUND, WRONG CHIP ID, or I2C ERROR. It never triggers macros
+or USB keyboard actions. Press K0 three times to open MATRIX (or use its menu
+item); press encoder PUSH to exit. Only while MATRIX is open are sensor registers
+polled, about every 170 ms.
+
+**Important: not active with the current matrix wiring.** The real
+`keyboard.json` uses **GP0 as matrix column 4** (positions R0C3, R1C3, R2C3);
+only GP1 is currently unassigned. Connecting SDA to GP0 while it is still a
+matrix input would interfere with keys, so the firmware deliberately defaults
+to `CC_ADXL345_ENABLE 0` and shows `ADXL OFF - GP0 IS MATRIX` in Detection.
+
+A viable hardware upgrade is to put the matrix on an **I2C I/O expander**
+(e.g. MCP23017 at a non-conflicting address) while keeping the ADXL345 on the
+same shared SDA/SCL bus. That requires **wiring the affected matrix lines to
+the expander and implementing a corresponding QMK matrix scanner** before
+releasing GP0 — the expander/scanner are **not implemented in this change**.
+Do not simply enable the switch with the present wiring.
+
+Once GP0 is actually released and the matrix definition/scanner is updated,
+set `CC_ADXL345_GP0_RELEASED 1` and `CC_ADXL345_ENABLE 1` in `config.h`.
+The planned sensor wiring is:
+
+| ADXL345 pad | RP2040-Zero |
+| --- | --- |
+| SDA | GP0 (after matrix relocation only) |
+| SCL | GP1 |
+| VCC | 3V3 |
+| GND | GND |
+| CS | 3V3 (select I2C) |
+| SDO | GND (I2C address 0x53) |
+| INT1 / INT2 | Unconnected (polling) |
+
+The I2C driver uses I2C0 at 3.3 V and expects I2C pull-ups on SDA/SCL
+(check the breakout for fitted resistors). Detection verifies ADXL345
+`DEVID=0xE5`, enables measurements and reads signed X/Y/Z samples from
+registers `0x32..0x37`. It is not a complete gesture/macro implementation.
+
+Build/flash locally only. No GitHub Actions. Never assume the ADXL345 is
+functional until the display actually shows changing X/Y/Z values on real hardware.
