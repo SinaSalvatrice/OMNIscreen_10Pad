@@ -91,6 +91,7 @@ void keyboard_post_init_user(void) {
 #endif
     layer_move(1); // Default is layer 1 on every USB boot.
     lcd_init(); // Known-good GPIO bootstrap then QMK HW SPI.
+    cc_adxl_init(); // No I2C pin ownership unless enabled after matrix relocation.
     cc_dirty = true;
 }
 
@@ -237,6 +238,10 @@ static void cc_zoom_slider_update(int16_t sample) {
 }
 
 void housekeeping_task_user(void) {
+    if (cc_matrix_test_view) {
+        cc_adxl_poll(); // Slow bounded I2C reads; never in the normal key path.
+        if (cc_adxl.changed) cc_dirty = true;
+    }
 #ifdef RGBLIGHT_ENABLE
     cc_rgb_tick();
 #endif
