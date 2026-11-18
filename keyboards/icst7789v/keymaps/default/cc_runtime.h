@@ -2,6 +2,9 @@
 #pragma once
 #include "cc_font.h"
 #include <stdio.h> // Compact numeric diagnostics for the matrix tester.
+#if CC_MCP23017_MATRIX
+extern bool cc_mcp23017_online(void);
+#endif
 #define CC_K0_TAPS_MS 250
 #define CC_K0_HOLD_MS 620
 #define CC_DEBOUNCE_MS 25
