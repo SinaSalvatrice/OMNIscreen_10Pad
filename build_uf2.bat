@@ -22,6 +22,8 @@ if not exist "%QMK_BASH%" (
 
 echo.
 echo === ICST7789V QMK UF2 build ===
+if not defined MCP23017_MATRIX set "MCP23017_MATRIX=no"
+echo Matrix backend: %MCP23017_MATRIX% (no=RP GPIO, yes=MCP23017+ADXL345)
 echo Regenerating layer UI and keymap from design\layer_system.json...
 where py >nul 2>nul
 if not errorlevel 1 (
