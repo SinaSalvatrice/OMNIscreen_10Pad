@@ -282,3 +282,27 @@ The Frame uses a single buffered WS2812 flush for all 43 LEDs per animation
 frame instead of one chain flush for each LED, to avoid excessive key latency.
 QMK's built-in effect range is limited to 14 LEDs and does not animate the
 Frame accidentally. No GitHub Actions or remote flashing are used.
+
+## VIA: USB manufacturer/product ID (November 2026)
+
+The former QMK example Vendor-ID `0xFEED` is rejected by VIA's current
+Draft Definition loader (`'0xFEED' is not a valid vendorId`). Both the QMK
+USB descriptor (`keyboards/icst7789v/keyboard.json`) and `via.json` now use:
+
+- USB **VID `0x4F4D`** (ASCII “OM”, chosen as a hobbyist QMK identifier).
+- USB **PID `0x7789`** (unchanged).
+
+**Important:** This is a hobbyist identifier, not a USB-IF-issued Vendor ID.
+It must not be used as an assertion of ownership of a globally assigned VID.
+VIA uses the actual **firmware USB VID/PID**, so changing only `via.json`
+will NOT make the already-flashed keyboard with `VID_FEED&PID_7789` work.
+
+**Procedure:** Build `build_uf2.bat` locally, flash the newly generated
+`build/ICST7789V.uf2` to RP2040-Zero via BOOTSEL, unplug/replug, then open
+VIA > Settings > Show Design tab and import the new `via.json`. Remove
+stale draft definitions and re-authorize the keyboard if prompted. In Windows
+Device Manager, the firmware should appear with `VID_4F4D&PID_7789`.
+Export existing VIA keymaps/macros before flashing whenever available.
+
+The seven existing layers, custom RGB menus, 14 main LEDs and 43 Frame LEDs
+remain unchanged. No GitHub Actions.
