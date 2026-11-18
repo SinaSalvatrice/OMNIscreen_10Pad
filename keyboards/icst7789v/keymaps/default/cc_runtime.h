@@ -2,9 +2,11 @@
 #pragma once
 #include "cc_font.h"
 #include "cc_editor_types.h"
+#include <stdlib.h>
 #include <stdio.h> // Compact numeric diagnostics for the matrix tester.
 #if CC_PCF8575_MATRIX
 extern bool cc_pcf8575_online(void);
+extern uint16_t cc_pcf8575_unassigned_low(void);
 #endif
 #define CC_K0_TAPS_MS 250
 #define CC_K0_HOLD_MS 620
@@ -21,7 +23,8 @@ static bool cc_menu_view = false;
 static bool cc_help_view = false;
 static bool cc_color_view = false;
 static bool cc_matrix_test_view = false;
-// 0..1023 or 0..4095 depending on QMK ADC configuration; normalize at runtime.
+static bool cc_tester_active;
+// Physical ADC count (0..1023) and calibrated position.
 static uint16_t cc_slider_raw = 0;
 static uint16_t cc_slider_pct = 0;
 static uint16_t cc_slider_last_sample = 0;
@@ -363,7 +366,7 @@ static void cc_matrix_adxl_widget(void) {
     }
     lcd_fill(0, 216, LCD_W, 24, 0x18C7);
     cc_draw_text(7, 218, line, 1, color);
-    cc_draw_text(7, 230, "K0 1X EXIT 3X TOGGLE / PUSH EXIT", 1, C_CYAN);
+    cc_draw_text(7, 230, cc_tester_active ? "PC TESTER / HOLD K0 TO EXIT" : "K0 1X EXIT 3X TOGGLE / PUSH EXIT", 1, C_CYAN);
     cc_adxl.changed = false;
 }
 
@@ -424,7 +427,7 @@ static void cc_help_screen(void) {
     cc_draw_text(12, 192, "K10 ALT / VIA", 1, C_YELLOW);
 }
 
-static void cc_color_screen(void) {
+static void cc_color_screen(bool show_exit) {
     lcd_fill(0, 0, 160, 120, C_RED);
     lcd_fill(160, 0, 160, 120, C_GREEN);
     lcd_fill(0, 120, 160, 120, C_BLUE);
@@ -432,8 +435,10 @@ static void cc_color_screen(void) {
 #if ICST_USE_HW_SPI
     lcd_fill(0, 116, 320, 8, C_MAGENTA);
 #endif
-    cc_draw_text(12, 206, "PUSH TO RETURN", 1, C_WHITE);
+    if (show_exit) cc_draw_text(12, 206, "PUSH TO RETURN", 1, C_WHITE);
 }
+
+#include "cc_tester.h"
 
 static bool omp_screen_invalid = true;
 static void omp_screen_render(void);
@@ -441,8 +446,9 @@ static void omp_screen_render(void);
 static void cc_redraw(void) {
     if (!panel_ready) return;
     if (cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view) omp_screen_invalid = true;
-    if (cc_matrix_test_view) cc_matrix_test_screen();
-    else if (cc_color_view) cc_color_screen();
+    if (cc_matrix_test_view && cc_tester_output == 1) cc_color_screen(false);
+    else if (cc_matrix_test_view) cc_matrix_test_screen();
+    else if (cc_color_view) cc_color_screen(true);
     else if (cc_help_view) cc_help_screen();
     else if (cc_menu_view) cc_menu_screen();
     else if (omp_enabled && omp_profile.screen.enabled) omp_screen_render();

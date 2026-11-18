@@ -211,8 +211,18 @@ class OmniPad:
             raise ViaError("Das zurückgelesene Profil weicht von der Übertragung ab.")
         return self.capabilities()
 
-    def diagnose(self, enabled):
-        self._exchange((0x07, 0, 0x76, int(enabled)))
+    def diagnose(self, enabled, *, tester=False):
+        self._exchange((0x07, 0, 0x76, (2 if tester else 1) if enabled else 0))
+
+    def tester_report(self):
+        reply = self._exchange((0x08, 0, 0x77))
+        if reply[5] > 6:
+            raise ViaError("Ungültiger Tester-Bericht vom OmniPad.")
+        entries = tuple(iter_unpack("<BBH", reply[6:6 + 4 * reply[5]]))
+        return bool(reply[3]), bool(reply[4]), entries
+
+    def test_output(self, output):
+        self._exchange((0x07, 0, 0x78, output))
 
     def detection(self):
         reply = self._exchange((0x08, 0, 0x70))

@@ -271,15 +271,22 @@ static void omp_layer_changed(void) {
     // Pending multi-taps keep the actions captured on their original layer.
 }
 
+// A larger logical value follows the physically corrected orientation.
+// The existing reverse field is an optional override, including old profiles.
+static uint16_t omp_slider_value(uint16_t raw) {
+    const omp_slider_t *slider = omp_enabled ? &omp_profile.layers[cc_active].slider : NULL;
+    uint16_t minimum = slider ? slider->minimum : 0;
+    uint16_t maximum = slider ? slider->maximum : 1023;
+    if (raw < minimum) raw = minimum;
+    if (raw > maximum) raw = maximum;
+    uint16_t value = (uint32_t)(raw - minimum) * 1023u / (maximum - minimum);
+    return slider && slider->reverse ? value : 1023u - value;
+}
+
 static void omp_slider_update(int16_t raw) {
     if (!omp_enabled || raw < 0) return;
     const omp_slider_t *slider = &omp_profile.layers[cc_active].slider;
-    int16_t clamped = raw;
-    if (clamped < slider->minimum) clamped = slider->minimum;
-    if (clamped > slider->maximum) clamped = slider->maximum;
-    int16_t value = ((int32_t)(clamped - slider->minimum) * 1023) /
-                    (slider->maximum - slider->minimum);
-    if (slider->reverse) value = 1023 - value;
+    int16_t value = omp_slider_value(raw);
     if (omp_slider_reference < 0) {
         omp_slider_reference = value;
         return;

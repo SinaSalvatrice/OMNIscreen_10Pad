@@ -15,6 +15,9 @@
 #define CC_PCF8575_RETRY_MS         500u
 #define CC_PCF8575_ALL_HIGH        0xFFFFu
 
+// Bits outside the assigned row and column lines stay released during scans.
+#define CC_PCF8575_UNASSIGNED 0xF0F8u
+static uint16_t cc_pcf_unassigned_low;
 static bool cc_pcf_ready = false;
 static uint16_t cc_pcf_last_retry = 0;
 
@@ -39,6 +42,10 @@ static bool cc_pcf_read(uint16_t *levels) {
 
 bool cc_pcf8575_online(void) {
     return cc_pcf_ready;
+}
+
+uint16_t cc_pcf8575_unassigned_low(void) {
+    return cc_pcf_unassigned_low;
 }
 
 static bool cc_pcf_init(void) {
@@ -75,6 +82,7 @@ bool matrix_scan_custom(matrix_row_t current[]) {
     }
 
     bool success = true;
+    uint16_t unassigned_low = 0;
     for (uint8_t column = 0; column < CC_PCF8575_COLUMNS; ++column) {
         // Keep every row and unused pin at 1; pull only P10..P13 LOW in turn.
         uint16_t levels = (uint16_t)(CC_PCF8575_ALL_HIGH & ~(1u << (8u + column)));
@@ -83,6 +91,7 @@ bool matrix_scan_custom(matrix_row_t current[]) {
             success = false;
             break;
         }
+        unassigned_low |= ~sampled & CC_PCF8575_UNASSIGNED;
         for (uint8_t row = 0; row < MATRIX_ROWS; ++row) {
             if (!(sampled & (1u << row))) {
                 next[row] |= (matrix_row_t)(1u << column);
@@ -99,5 +108,6 @@ bool matrix_scan_custom(matrix_row_t current[]) {
         // On bus failure release any latched keys rather than leaving Ctrl stuck.
         for (uint8_t row = 0; row < MATRIX_ROWS; ++row) next[row] = 0;
     }
+    cc_pcf_unassigned_low = success ? unassigned_low : 0;
     return cc_pcf_store(current, next);
 }

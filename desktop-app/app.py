@@ -15,6 +15,7 @@ from profile import (
     default_profile, encode_profile, key_config, label_for_code, layer_config,
 )
 from screen_editor import ScreenEditor
+from tester import Tester
 from ui_helpers import BG, PANEL, KEY, TEXT, MUTED, ACCENT, Form, ScrollPanel, button, label, style
 from via import OmniPad, ViaError, UnsupportedCommand
 
@@ -42,6 +43,7 @@ class Editor:
         self.snippet_selection = 0
         self.autosave_id = None
         self.on_device = None
+        self.active_profile = None
         self.preview_phase = 0
         self.profile = default_profile()
         self.disk_draft = False
@@ -90,6 +92,8 @@ class Editor:
         self.screen_page = ScreenEditor(self.notebook, self)
         self.notebook.add(self.screen_page, text="Display-Studio")
         self.notebook.add(self.detect_page, text="Erkennung")
+        self.tester_page = Tester(self.notebook, self)
+        self.notebook.add(self.tester_page, text="Tester")
         self.notebook.bind("<<NotebookTabChanged>>", lambda _: self.refresh_selected_page())
         self.create_keys()
         self.create_lighting()
@@ -138,6 +142,8 @@ class Editor:
                     self.detection = None
                 if isinstance(error, UnsupportedCommand) and polling:
                     self.has_detection = False
+                if not polling and hasattr(self, "tester_page"):
+                    self.tester_page.pending = False
                 if not polling and not (isinstance(error, ViaError) and self.device is None):
                     messagebox.showerror("OmniPad", str(error), parent=self.window)
             else:
@@ -148,9 +154,22 @@ class Editor:
                     messagebox.showerror("OmniPad", str(error), parent=self.window)
             self.refresh_buttons()
         if not self.closing and self.device and self.has_detection and not self.polling and not self.busy():
-            self.submit(self.device.detection, self.detected, polling=True)
+            pad = self.device
+            testing = self.tester_page.active
+
+            def read_signals():
+                detection = pad.detection()
+                return detection, pad.tester_report() if testing else None
+
+            self.submit(read_signals, self.receive_signals, polling=True)
         if not self.closing or self.tasks:
             self.window.after(100, self.tick)
+
+    def receive_signals(self, result):
+        detection, report = result
+        self.detected(detection)
+        if report is not None:
+            self.tester_page.report(detection, report)
 
     def connect(self, replace=False):
         if self.busy():
@@ -160,13 +179,21 @@ class Editor:
                 parent=self.window):
             return
         previous = self.device
+        was_testing = self.tester_page.active
+        self.tester_page.active = False
         self.device = None
         self.has_detection = False
         self.status.set("USB-Verbindung wird geprüft …")
         metadata = deepcopy(self.profile)
         def read():
             if previous:
-                previous.close()
+                try:
+                    if was_testing:
+                        previous.diagnose(False)
+                except (OSError, RuntimeError):
+                    pass
+                finally:
+                    previous.close()
             pad = OmniPad.connect()
             try:
                 caps = pad.capabilities()
@@ -184,11 +211,12 @@ class Editor:
             self.device, self.capabilities, raw, snapshot, detection = result
             self.generation = self.capabilities["generation"] if self.capabilities else None
             self.on_device = raw
+            self.active_profile = decode_profile(raw, metadata) if raw else None
             self.detection = detection
             self.has_detection = detection is not None
             atomic_json(USER_DATA / "backups" / f"via-{datetime.now():%Y%m%d-%H%M%S}.json", snapshot)
             if replace or not self.disk_draft:
-                self.profile = decode_profile(raw, metadata) if raw else default_profile(snapshot)
+                self.profile = deepcopy(self.active_profile) if raw else default_profile(snapshot)
                 self.disk_draft = True
                 self.history.clear()
                 self.future.clear()
@@ -262,7 +290,10 @@ class Editor:
         self.redo_button.configure(state="normal" if self.future else "disabled")
         self.connect_button.configure(state="disabled" if self.busy() else "normal",
                                       text="Neu verbinden" if self.device else "Verbinden")
-        self.write_button.configure(state="normal" if self.device and not self.busy() else "disabled")
+        testing = hasattr(self, "tester_page") and self.tester_page.active
+        self.write_button.configure(state="normal" if self.device and not self.busy() and not testing else "disabled")
+        if hasattr(self, "tester_page"):
+            self.tester_page.refresh()
 
     def refresh(self):
         if not hasattr(self, "key_canvas"):
@@ -865,7 +896,7 @@ class Editor:
             self.screen_page.draw()
 
     def write_profile(self):
-        if not self.device or self.busy():
+        if not self.device or self.busy() or self.tester_page.active:
             return
         if not self.capabilities:
             messagebox.showinfo("Firmware aktualisieren",
@@ -884,6 +915,7 @@ class Editor:
             self.capabilities = capabilities
             self.generation = capabilities["generation"]
             self.on_device = payload
+            self.active_profile = captured
             atomic_json(USER_DATA / "last-device.omnipad.json", captured)
             self.status.set("Profil auf dem Pad gespeichert und vollständig zurückgelesen")
         self.submit(write, saved)
@@ -933,7 +965,7 @@ class Editor:
             self._save_draft()
         if self.device:
             try:
-                if self.capabilities and self.detection and self.detection.enabled:
+                if self.capabilities and (self.tester_page.active or (self.detection and self.detection.enabled)):
                     self.device.diagnose(False)
             except (OSError, RuntimeError):
                 pass
