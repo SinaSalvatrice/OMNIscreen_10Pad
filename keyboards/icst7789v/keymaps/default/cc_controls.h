@@ -241,6 +241,14 @@ void housekeeping_task_user(void) {
     if (cc_matrix_test_view) {
         cc_adxl_poll(); // Slow bounded I2C reads; never in the normal key path.
         if (cc_adxl.changed) cc_dirty = true;
+#if CC_MCP23017_MATRIX
+        const bool online = cc_mcp23017_online();
+        if (online != cc_mcp_last_online) {
+            cc_mcp_last_online = online;
+            cc_matrix_full_redraw = true;
+            cc_dirty = true;
+        }
+#endif
     }
 #ifdef RGBLIGHT_ENABLE
     cc_rgb_tick();
