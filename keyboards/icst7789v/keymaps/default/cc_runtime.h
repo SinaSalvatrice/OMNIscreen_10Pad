@@ -34,7 +34,6 @@ static bool cc_matrix_return_encoder_mode = true;
 static uint8_t cc_matrix_return_preview = 0;
 static bool cc_dirty = true;
 static uint16_t cc_last_draw = 0;
-static uint16_t cc_held_code[CC_KEY_COUNT] = {0};
 
 typedef struct {
     bool sample;
