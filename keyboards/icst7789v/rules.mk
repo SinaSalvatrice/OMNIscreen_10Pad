@@ -5,6 +5,7 @@ BOARD = GENERIC_RP_RP2040
 # Quantum Painter stays disabled until native hardware SPI is confirmed.
 QUANTUM_PAINTER_ENABLE = no
 SPI_DRIVER_REQUIRED = yes
+I2C_DRIVER_REQUIRED = yes
 ANALOG_DRIVER_REQUIRED = yes
 # K9 double tap handled immediately in process_record_user (no delayed modifier).
 
