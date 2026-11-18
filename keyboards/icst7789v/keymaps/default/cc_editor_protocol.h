@@ -1,16 +1,32 @@
-// Transactional VIA extension on custom channel 0, IDs 0x71..0x75.
+// Transactional VIA extension on custom channel 0, IDs 0x71..0x78.
 #pragma once
 #include "via.h"
 
 static bool omp_command(uint8_t *data, uint8_t length) {
     if (length != 32 || data[1] != 0 ||
         (data[0] != id_custom_get_value && data[0] != id_custom_set_value) ||
-        data[2] < 0x71 || data[2] > 0x76) return false;
+        data[2] < 0x71 || data[2] > 0x78) return false;
     const bool get = data[0] == id_custom_get_value;
     const uint8_t id = data[2];
-    if (id == 0x76 && !get && data[3] <= 1) {
+    if (id == 0x77 && get) return cc_tester_report(data);
+    if (id == 0x78 && !get && cc_tester_active && cc_matrix_test_view && data[3] <= 3) {
+        if (cc_tester_output == 1) cc_matrix_full_redraw = true;
+        cc_tester_output = data[3];
+        cc_tester_output_at = timer_read();
+        cc_dirty = true;
+        return true;
+    }
+    if (id == 0x76 && !get && data[3] <= 2) {
         omp_release_all();
         clear_keyboard();
+        cc_tester_active = data[3] == 2;
+        cc_tester_last_poll = timer_read();
+        cc_k0_tap_count = 0;
+        if (cc_tester_output == 1) cc_matrix_full_redraw = true;
+        cc_tester_output = 0;
+        cc_dirty = true;
+        cc_signal_head = cc_signal_count = 0;
+        cc_signal_overflow = false;
         if (data[3]) cc_matrix_test_enter();
         else cc_matrix_test_exit();
         return true;

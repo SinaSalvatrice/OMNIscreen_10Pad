@@ -11,10 +11,14 @@ Der Starter richtet die USB-Bibliothek in einer eigenen Python-Umgebung ein.
 - Pro Taste stehen **Direkt**, **Tap Dance** mit bis zu vier Tipps und Halten sowie **Durchschalten** mit vier Aktionen bereit.
 - Rechtsklick auf eine Taste öffnet Displaytext, Kopieren, Einfügen und die Verknüpfung zum Display-Studio.
 - Rechtsklick auf einen Layer öffnet Name, Farbmarkierung, Duplizieren und Startlayer. **+ Layer** fügt einen Layer hinzu.
-- Der Schieberegler an **GPIO28 / ADC2** erhält seine eigene Belegung pro Layer. Er kann Auf-/Abwärtsaktionen oder Main-/Frame-Helligkeit steuern. Minimum, Maximum, Schrittweite, Totzone und Richtung sind einstellbar.
+- Der Schieberegler an **GPIO28 / ADC2** erhält seine eigene Belegung pro Layer. Er kann Auf-/Abwärtsaktionen oder Main-/Frame-Helligkeit steuern. Minimum, Maximum, Schrittweite, Totzone und Richtung sind einstellbar. Firmwareversion 5 dreht die Grundrichtung um. Die Option „Richtung umkehren“ bleibt als Override pro Layer verfügbar.
 - **Beleuchtung** bietet neun Effekte, zwei Farben und unabhängige Einstellungen für die 14 Main- und 43 Frame-LEDs. Trigger reagieren auf Taste, Encoder, Layer oder Regler.
 - **Snippet-Bibliothek** verwaltet Text, Tasten, gedrückte/gehaltene Tasten und Pausen. Der Schritt-Editor akzeptiert Aktionsnamen wie `tap Kopieren` und `down Strg` sowie Hex-Keycodes. Texte werden für deutsches Tastaturlayout übersetzt.
 - **Display-Studio** erstellt Felder, Texte und Icons auf 320 × 240 Pixeln. Ziehen verschiebt, der Eckgriff ändert die Größe. Datenquellen und Sichtbarkeitsregeln lassen sich rechts einstellen. Der Export verwendet `.screen.json`.
+- **Tester** protokolliert beobachtete Signale mit GPIO oder Anschluss, Funktion und Messwert.
+  Unbelegte Matrixpositionen und freie PCF8575-Eingänge werden als nicht zugeordnet angezeigt.
+  Display, Main-LEDs und Frame-LEDs lassen sich separat ausgeben und am Pad per Sichtprüfung beurteilen.
+  Der Tester braucht Firmwareversion 5. Ohne Signal bleibt die Liste leer.
 - **Erkennung** zeigt Tasten, Encoder, Regler und den ADXL345-Status. Der Hardware-Test unterdrückt PC-Aktionen des Pads.
 - **Auf Pad speichern** überträgt das gesamte Profil und liest es zur Prüfung vollständig zurück. Import/Export und Rückgängig/Wiederholen beziehen sich auf den gesamten Entwurf.
 
@@ -23,7 +27,7 @@ Dieser Ordner ist in Git ausgeschlossen.
 
 ## Firmware und bestehende Belegungen
 
-Die erweiterten Gerätefunktionen benötigen Firmwareversion 4 aus diesem Branch.
+Die erweiterten Gerätefunktionen benötigen Firmwareversion 4 oder neuer. Der Tester ist ab Version 5 verfügbar.
 Vorhandene Firmwareversion 3 lässt sich auslesen und sichern. Beim Verbinden legt
 der Editor eine VIA-Sicherung an und übernimmt die vorhandenen Belegungen in den
 ersten Entwurf. **Vom Pad laden** ersetzt den Entwurf ausdrücklich.

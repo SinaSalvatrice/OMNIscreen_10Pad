@@ -9,7 +9,7 @@
 static void cc_encoder_press_action(void) {
     if (cc_matrix_test_view) {
         ++cc_detect_encoder_pushes;
-        cc_matrix_test_exit(); // Encoder PUSH leaves the test without host input.
+        if (!cc_tester_active) cc_matrix_test_exit();
         return;
     }
     if (cc_color_view || cc_help_view) {
@@ -118,6 +118,8 @@ static void cc_k0_update(void) {
     if (cc_k0.sample != cc_k0.stable &&
         timer_elapsed(cc_k0.changed) >= CC_DEBOUNCE_MS) {
         cc_k0.stable = cc_k0.sample;
+        cc_tester_record(CC_SIGNAL_K0, 0, !cc_k0.stable);
+        if (cc_tester_active && cc_matrix_test_view && cc_k0.stable) return;
         if (!cc_k0.stable) {
             cc_k0_pressed = timer_read();
             cc_k0_held = false;
@@ -142,7 +144,10 @@ static void cc_k0_update(void) {
         if (omp_enabled) omp_release_all();
         cc_k0_held = true;
         cc_k0_tap_count = 0;
-        cc_open_menu();
+        if (cc_tester_active && cc_matrix_test_view) {
+            cc_matrix_test_exit();
+            cc_tester_active = false;
+        } else cc_open_menu();
     }
     if (cc_k0.stable && cc_k0_tap_count &&
         timer_elapsed(cc_k0_released) >= CC_K0_TAPS_MS) {
@@ -168,6 +173,7 @@ static void cc_encoder_button_update(void) {
     if (cc_encoder_button.sample != cc_encoder_button.stable &&
         timer_elapsed(cc_encoder_button.changed) >= CC_DEBOUNCE_MS) {
         cc_encoder_button.stable = cc_encoder_button.sample;
+        cc_tester_record(CC_SIGNAL_ENCODER_PUSH, 0, !cc_encoder_button.stable);
         if (omp_keys[10].down || (omp_enabled && !cc_matrix_test_view && !cc_menu_view && !cc_display_mode)) {
             omp_key_event(10, !cc_encoder_button.stable);
         } else if (!cc_encoder_button.stable) cc_encoder_press_action();
@@ -220,6 +226,7 @@ void matrix_scan_user(void) {
 
 static bool cc_encoder_rotate(bool clockwise) {
     if (cc_matrix_test_view) {
+        cc_tester_record(CC_SIGNAL_ENCODER_TURN, clockwise, 0);
         if (clockwise) ++cc_detect_clockwise;
         else ++cc_detect_counterclockwise;
         return false; // Never emit encoder host actions during diagnosis.
@@ -251,15 +258,16 @@ static bool cc_encoder_rotate(bool clockwise) {
 // encoder_update_user. Intercept both edges before QMK sends a host keycode.
 bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
     (void)keycode;
+    if (IS_KEYEVENT(record->event) && cc_matrix_test_view) {
+        cc_tester_matrix(record->event.key.row, record->event.key.col, record->event.pressed);
+        return false;
+    }
     if (IS_KEYEVENT(record->event) && omp_enabled) {
         const uint8_t row = record->event.key.row, col = record->event.key.col;
         for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
             if (cc_matrix_row[i] == row && cc_matrix_col[i] == col) {
-                if (cc_matrix_test_view) cc_matrix_test_record(row, col, record->event.pressed);
-                else {
-                    cc_last_key = i;
-                    omp_key_event(i, record->event.pressed);
-                }
+                cc_last_key = i;
+                omp_key_event(i, record->event.pressed);
                 return false;
             }
         }
@@ -299,14 +307,17 @@ void housekeeping_task_user(void) {
         const bool online = cc_pcf8575_online();
         if (online != cc_pcf_last_online) {
             cc_pcf_last_online = online;
+            if (online) cc_tester_record(CC_SIGNAL_PCF, 0, 0);
             cc_matrix_full_redraw = true;
             cc_dirty = true;
         }
 #endif
     }
 #ifdef RGBLIGHT_ENABLE
-    if (omp_enabled) omp_lighting_tick();
-    else cc_rgb_tick();
+    if (!cc_tester_preview_leds()) {
+        if (omp_enabled) omp_lighting_tick();
+        else cc_rgb_tick();
+    }
 #endif
     omp_actions_tick();
     if (cc_matrix_test_view && omp_enabled && omp_down_mask) omp_release_all();
@@ -316,17 +327,24 @@ void housekeeping_task_user(void) {
         if (sample >= 0) {
             uint16_t previous_pct = cc_slider_pct;
             cc_slider_raw = sample;
-            cc_slider_pct = ((uint32_t)sample * 100u + 511u) / 1023u;
-            if (cc_slider_pct > 100) cc_slider_pct = 100;
+            const uint16_t value = omp_slider_value(cc_slider_raw);
+            cc_slider_pct = ((uint32_t)value * 100u + 511u) / 1023u;
             cc_slider_valid = true;
             if (cc_matrix_test_view || (omp_enabled && omp_profile.screen.enabled)) {
                 if (cc_slider_pct != previous_pct) cc_dirty = true;
             }
             if (!cc_matrix_test_view && !cc_menu_view) {
                 if (omp_enabled) omp_slider_update(sample);
-                else cc_zoom_slider_update(sample);
+                else cc_zoom_slider_update(value);
             }
         } else cc_slider_valid = false;
     }
+    if (cc_tester_output && (!cc_matrix_test_view || timer_elapsed(cc_tester_output_at) >= 1800)) {
+        cc_tester_output = 0;
+        cc_matrix_full_redraw = true;
+        cc_dirty = true;
+    }
+    if (!cc_matrix_test_view) cc_tester_active = false;
+    cc_tester_sample();
     if (cc_dirty && timer_elapsed(cc_last_draw) >= 35) cc_redraw();
 }

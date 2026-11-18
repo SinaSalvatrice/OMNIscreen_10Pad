@@ -226,6 +226,31 @@ static void cc_rgb_tick(void) {
     if (cc_frame_dirty) cc_rgb_frame_paint();
 }
 
+static bool cc_tester_preview_leds(void) {
+    static uint8_t previous;
+    uint8_t output = cc_matrix_test_view && timer_elapsed(cc_tester_output_at) < 1800
+        ? cc_tester_output : 0;
+    if (output < 2) {
+        if (previous) {
+            rgblight_sethsv_noeeprom(rgblight_get_hue(), rgblight_get_sat(), rgblight_get_val());
+            cc_main_dirty = cc_frame_dirty = true;
+            previous = 0;
+        }
+        return false;
+    }
+    if (previous != output) {
+        // Drive only the selected zone at a low test brightness.
+        uint8_t first = output == 2 ? 0 : CC_RGB_FRAME_LED_START;
+        uint8_t end = output == 2 ? CC_RGB_MAIN_LED_COUNT : RGBLIGHT_LED_COUNT;
+        for (uint8_t led = 0; led < RGBLIGHT_LED_COUNT; ++led)
+            rgblight_driver.set_color(led, led >= first && led < end ? 18 : 0, 0, 0);
+        // Flush the driver directly so a saved "off" setting cannot mask the test.
+        rgblight_driver.flush();
+        previous = output;
+    }
+    return true;
+}
+
 // VIA channel 0 preserves the previous four custom main-palette IDs (1..4).
 // New Frame values use 5..11, so existing saved VIA definitions remain valid.
 void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
