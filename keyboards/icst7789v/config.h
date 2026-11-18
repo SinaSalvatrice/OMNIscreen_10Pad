@@ -26,6 +26,23 @@
 
 #define SLIDER_ADC_PIN GP28  // ADC2; slide potentiometer signal
 
+// ADXL345 diagnostic I2C bus: GP0 (SDA) / GP1 (SCL), 0x53 when SDO=GND.
+// IMPORTANT: keyboard.json currently uses GP0 as matrix column 3!
+// Leave this off until that column is physically moved to an I2C expander
+// and the keyboard matrix implementation has been changed accordingly.
+// Enabling both uses of GP0 would break keyboard scanning.
+#define CC_ADXL345_ENABLE 0
+#define CC_ADXL345_GP0_RELEASED 0
+#if CC_ADXL345_ENABLE && !CC_ADXL345_GP0_RELEASED
+#    error "ADXL345 cannot use GP0: keyboard matrix still owns GP0. Rework the matrix first."
+#endif
+#define I2C_DRIVER I2CD0
+#define I2C1_SDA_PIN GP0
+#define I2C1_SCL_PIN GP1
+// RP2040 GPIO function 3 is hardware I2C; QMK's generic names are I2C1_*.
+#define I2C1_SDA_PAL_MODE 3
+#define I2C1_SCL_PAL_MODE 3
+
 #define TFT_WIDTH 240
 #define TFT_HEIGHT 320
 
