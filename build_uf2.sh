@@ -57,6 +57,24 @@ echo "Installing keyboard definition..."
 rm -rf "keyboards/$KEYBOARD"
 cp -R "$PROJECT_ROOT/keyboards/$KEYBOARD" "keyboards/$KEYBOARD"
 
+# keyboard.json is the authoritative PCF8575 custom-matrix configuration.
+# Keep the legacy GPIO hardware bootable with its own QMK-compatible metadata.
+# Never try to register PCF8575 P00..P13 as RP2040 MCU pins.
+case "${PCF8575_MATRIX:-no}" in
+    yes)
+        echo "Keyboard JSON: PCF8575 custom_lite (3 rows / 4 columns)"
+        ;;
+    no)
+        echo "Keyboard JSON: legacy RP2040 GPIO matrix"
+        cp -f "$PROJECT_ROOT/keyboards/$KEYBOARD/keyboard_gpio.json" \
+              "keyboards/$KEYBOARD/keyboard.json"
+        ;;
+    *)
+        echo "ERROR: PCF8575_MATRIX must be 'yes' or 'no'." >&2
+        exit 6
+        ;;
+esac
+
 rm -f "${KEYBOARD}_${KEYMAP}.uf2"
 
 echo "Building $KEYBOARD:$KEYMAP..."
