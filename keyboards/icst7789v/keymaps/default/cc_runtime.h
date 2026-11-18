@@ -1,6 +1,7 @@
 // 320x240 Layer Map runtime. Included only from keymap.c after SPI routines.
 #pragma once
 #include "cc_font.h"
+#include "cc_editor_types.h"
 #include <stdio.h> // Compact numeric diagnostics for the matrix tester.
 #if CC_PCF8575_MATRIX
 extern bool cc_pcf8575_online(void);
@@ -86,7 +87,7 @@ static void cc_draw_text(uint16_t x, uint16_t y, const char *str, uint8_t scale,
 }
 
 static void cc_draw_icon(uint8_t layer_index, uint16_t accent) {
-    const cc_layer_desc_t *desc = &cc_layers[layer_index];
+    const cc_layer_desc_t *desc = &cc_layers[layer_index < CC_LAYER_COUNT ? layer_index : 0];
     for (uint8_t y = 0; y < 16; ++y) {
         for (uint8_t x = 0; x < 16; ++x) {
             if (desc->icon[y] & ((uint16_t)0x8000u >> x)) {
@@ -97,7 +98,7 @@ static void cc_draw_icon(uint8_t layer_index, uint16_t accent) {
 }
 
 static void cc_activate_layer(uint8_t layer_index) {
-    if (layer_index >= CC_LAYER_COUNT) return;
+    if (layer_index >= omp_layer_count()) return;
     if (cc_active != layer_index) cc_previous = cc_active;
     cc_active = layer_index;
     cc_preview = layer_index;
@@ -159,13 +160,13 @@ static void cc_background(void) {
 
 static void cc_layer_screen(void) {
     const uint8_t selected = cc_preview;
-    const cc_layer_desc_t *desc = &cc_layers[selected];
-    const uint16_t accent = desc->accent_rgb565;
+    const cc_layer_desc_t *desc = &cc_layers[selected < CC_LAYER_COUNT ? selected : 0];
+    const uint16_t accent = omp_enabled ? omp_profile.layers[selected].accent : desc->accent_rgb565;
     cc_background();
     lcd_fill(7, 33, 109, 171, 0x2186);
     lcd_fill(7, 33, 109, 4, accent);
     cc_draw_icon(selected, accent);
-    cc_draw_text(12, 151, desc->name, 2, C_WHITE);
+    cc_draw_text(12, 151, omp_enabled ? omp_profile.layers[selected].name : desc->name, 2, C_WHITE);
     cc_draw_text(12, 180, "K9 2X CC  K0 2X DEF", 1, accent);
     cc_draw_text(12, 192, selected == cc_active ? "ACTIVE" : "PREVIEW", 1, C_WHITE);
     for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
@@ -177,9 +178,10 @@ static void cc_layer_screen(void) {
         const uint16_t w = shape->w;
         const uint16_t h = shape->h;
         // The screen must not pretend that a VIA-edited key still has its preset.
-        const bool fixed_modifier = i == 4 || i == 8 || i == 9;
+        const bool fixed_modifier = !omp_enabled && (i == 4 || i == 8 || i == 9);
         const uint16_t mapped = dynamic_keymap_get_keycode(selected, cc_matrix_row[i], cc_matrix_col[i]);
         const char *label = (!fixed_modifier && mapped != desc->taps[i]) ? "VIA" : desc->labels[i];
+        if (omp_enabled) label = omp_profile.layers[selected].keys[i].label;
         const bool highlight = cc_last_key == i;
         lcd_fill(x, y, w, h, highlight ? 0x3A90 : 0x29E8);
         lcd_fill(x, y, w, 2, highlight ? accent : 0x426A);
@@ -433,12 +435,17 @@ static void cc_color_screen(void) {
     cc_draw_text(12, 206, "PUSH TO RETURN", 1, C_WHITE);
 }
 
+static bool omp_screen_invalid = true;
+static void omp_screen_render(void);
+
 static void cc_redraw(void) {
     if (!panel_ready) return;
+    if (cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view) omp_screen_invalid = true;
     if (cc_matrix_test_view) cc_matrix_test_screen();
     else if (cc_color_view) cc_color_screen();
     else if (cc_help_view) cc_help_screen();
     else if (cc_menu_view) cc_menu_screen();
+    else if (omp_enabled && omp_profile.screen.enabled) omp_screen_render();
     else cc_layer_screen();
     cc_dirty = false;
     cc_last_draw = timer_read();

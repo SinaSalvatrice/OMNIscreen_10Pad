@@ -1,18 +1,58 @@
 # OmniPad Editor
 
-Unter Windows `desktop-app\launch.cmd` öffnen. Der Starter benötigt Python 3
-mit Tkinter und installiert `hidapi` in einer eigenen virtuellen Umgebung.
+Im Repo `C:\GitHub\OMNIscreen_10Pad` liegt der Starter unter
+`desktop-app\launch.cmd`. Python 3 mit Tkinter wird benötigt.
+Der Starter richtet die USB-Bibliothek in einer eigenen Python-Umgebung ein.
 
-Das angeschlossene OMNIscreen 10Pad wird über seine VIA-Schnittstelle ausgelesen.
-Die Reiter entsprechen den gemeldeten Layern. Rechts eine Aktion auswählen oder
-auf einen Key ziehen, dann mit **Auf Gerät speichern** bestätigen. Der Editor
-liest die Änderung zurück. K5, K9, K10, K0 und der Encoder-Druck sind in der
-bestehenden Firmware fest belegt. Die Encoder-Drehrichtungen sind bearbeitbar.
+## Bedienung
 
-**VIA-Sicherung** exportiert Matrix, Encoder, VIA-Makros und lesbare
-Beleuchtungswerte. Für eine Sicherung ohne Fenster gibt es `backup.py DATEI`.
-Der Export verwendet das OmniPad-Sicherungsformat.
+- Über den Layer-Reiter den Bearbeitungslayer wählen. Die Markierung mit Punkt zeigt den am Pad aktiven Layer.
+- Aktionen rechts suchen und auf eine Taste ziehen. Unter **Taste / Regler** die Details bearbeiten und **Übernehmen** drücken.
+- Pro Taste stehen **Direkt**, **Tap Dance** mit bis zu vier Tipps und Halten sowie **Durchschalten** mit vier Aktionen bereit.
+- Rechtsklick auf eine Taste öffnet Displaytext, Kopieren, Einfügen und die Verknüpfung zum Display-Studio.
+- Rechtsklick auf einen Layer öffnet Name, Farbmarkierung, Duplizieren und Startlayer. **+ Layer** fügt einen Layer hinzu.
+- Der Schieberegler an **GPIO28 / ADC2** erhält seine eigene Belegung pro Layer. Er kann Auf-/Abwärtsaktionen oder Main-/Frame-Helligkeit steuern. Minimum, Maximum, Schrittweite, Totzone und Richtung sind einstellbar.
+- **Beleuchtung** bietet neun Effekte, zwei Farben und unabhängige Einstellungen für die 14 Main- und 43 Frame-LEDs. Trigger reagieren auf Taste, Encoder, Layer oder Regler.
+- **Snippet-Bibliothek** verwaltet Text, Tasten, gedrückte/gehaltene Tasten und Pausen. Der Schritt-Editor akzeptiert Aktionsnamen wie `tap Kopieren` und `down Strg` sowie Hex-Keycodes. Texte werden für deutsches Tastaturlayout übersetzt.
+- **Display-Studio** erstellt Felder, Texte und Icons auf 320 × 240 Pixeln. Ziehen verschiebt, der Eckgriff ändert die Größe. Datenquellen und Sichtbarkeitsregeln lassen sich rechts einstellen. Der Export verwendet `.screen.json`.
+- **Erkennung** zeigt Tasten, Encoder, Regler und den ADXL345-Status. Der Hardware-Test unterdrückt PC-Aktionen des Pads.
+- **Auf Pad speichern** überträgt das gesamte Profil und liest es zur Prüfung vollständig zurück. Import/Export und Rückgängig/Wiederholen beziehen sich auf den gesamten Entwurf.
 
-Mit der Firmware aus diesem Branch zeigt der Live-Inspektor den aktiven
-Layer. K0 am Pad dreimal drücken, um die Hardware-Eingaben im Matrix-Test
-anzuzeigen. Encoder-Druck beendet den Test.
+Der Editor speichert den Entwurf und USB-Sicherungen in `desktop-app/user-data`.
+Dieser Ordner ist in Git ausgeschlossen.
+
+## Firmware und bestehende Belegungen
+
+Die erweiterten Gerätefunktionen benötigen Firmwareversion 4 aus diesem Branch.
+Vorhandene Firmwareversion 3 lässt sich auslesen und sichern. Beim Verbinden legt
+der Editor eine VIA-Sicherung an und übernimmt die vorhandenen Belegungen in den
+ersten Entwurf. **Vom Pad laden** ersetzt den Entwurf ausdrücklich.
+
+Vor dem ersten Flashen der Version 4 das gewünschte Profil exportieren.
+Der vergrößerte Flash-Speicherbereich und die erweiterte Layerkapazität ändern
+die Speicheraufteilung. Nach dem Flashen das exportierte Profil importieren
+und **Auf Pad speichern** drücken. Dieser Schritt stellt die Belegung,
+Snippets und die weiteren Profileinstellungen her.
+
+Die Firmware wird lokal über `build_uf2.bat` gebaut. Standard ist die GPIO-Matrix.
+Für die bereits auf den PCF8575 umverdrahtete Matrix vor dem Bauen in PowerShell
+`$env:PCF8575_MATRIX='yes'` setzen. Der GPIO-Build und der PCF8575-Build passen
+zur jeweiligen Verdrahtung.
+
+K0 ohne zugewiesene Aktion bedient das Modul wie bisher.
+K0 zwei Sekunden halten öffnet bei aktivem Editorprofil immer das Modulmenü.
+Encoder-Druck beendet den Matrix-Test.
+
+## Gerätespeicher
+
+Die erste Firmwareausbaustufe reserviert zwölf Layer, sechzehn Snippets mit
+gemeinsam 1152 Byte Makrocode und sechzehn Displayelemente. Die App zeigt
+die eingerichteten Layer an. Das Display verwendet die vorhandene Pixelschrift
+mit Großbuchstaben und transliterierten Umlauten. Layernamen haben auf dem
+Display fünfzehn, Tastenbeschriftungen elf und statische Feldtexte neunzehn
+ASCII-Zeichen. In den Projektdateien bleiben die vollständigen Texte erhalten.
+
+Das erweiterte Profil liegt in zwei geprüften Speicherplätzen.
+USB-Daten werden zunächst im RAM gesammelt. Erst ein vollständig empfangenes
+und geprüftes Profil wird gespeichert. Makropausen laufen zeitgesteuert,
+damit sie die Tastenabfrage nicht anhalten.

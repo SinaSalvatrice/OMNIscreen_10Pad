@@ -2,3 +2,5 @@ build/
 *.uf2
 
 __pycache__/
+
+/desktop-app/user-data/

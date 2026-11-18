@@ -1,0 +1,300 @@
+// Runtime actions. Every press keeps its original configuration until release.
+#pragma once
+#include "action.h"
+
+typedef struct {
+    bool down, holding;
+    uint8_t taps, layer;
+    uint16_t pressed_at, released_at, held_code;
+    omp_key_t key;
+} omp_key_state_t;
+
+static omp_key_state_t omp_keys[OMP_KEYS];
+static uint8_t omp_cycles[OMP_LAYERS][OMP_KEYS];
+static uint16_t omp_down_mask;
+static uint8_t omp_last_key = 255;
+static uint8_t omp_last_gesture;
+static uint8_t omp_trigger;
+static int8_t omp_encoder_direction;
+static uint16_t omp_trigger_at;
+static uint8_t omp_encoder_position;
+static uint8_t omp_last_layer = 255;
+static int16_t omp_slider_reference = -1;
+static bool omp_qmk_lighting_override;
+static uint8_t omp_qmk_effect;
+static bool omp_native_lighting(uint16_t code, bool pressed);
+static uint8_t omp_brightness_override[2] = {255, 255};
+static uint16_t omp_macro_position, omp_macro_end, omp_macro_wait;
+static uint16_t omp_macro_timer;
+static bool omp_macro_running;
+static uint16_t omp_macro_held[16];
+static uint8_t omp_macro_held_count;
+static uint8_t omp_macro_queue[8], omp_macro_head, omp_macro_tail;
+static uint16_t omp_held_codes[32];
+static uint8_t omp_held_refs[32];
+static uint16_t omp_taps[32];
+static uint8_t omp_tap_head, omp_tap_tail;
+static uint16_t omp_tap_active, omp_tap_timer;
+
+static void omp_event(uint8_t trigger) {
+    omp_trigger = trigger;
+    omp_trigger_at = timer_read();
+}
+
+static void omp_emit(uint16_t code, bool pressed) {
+    if (code <= KC_TRNS || omp_native_lighting(code, pressed)) return;
+    uint8_t slot;
+    for (slot = 0; slot < ARRAY_SIZE(omp_held_codes); ++slot) {
+        if (omp_held_refs[slot] && omp_held_codes[slot] == code) break;
+    }
+    if (pressed) {
+        if (slot < ARRAY_SIZE(omp_held_codes)) {
+            ++omp_held_refs[slot];
+            return;
+        }
+        for (slot = 0; slot < ARRAY_SIZE(omp_held_codes); ++slot) if (!omp_held_refs[slot]) break;
+        if (slot == ARRAY_SIZE(omp_held_codes)) return;
+        omp_held_codes[slot] = code;
+        omp_held_refs[slot] = 1;
+    } else {
+        if (slot == ARRAY_SIZE(omp_held_codes) || --omp_held_refs[slot]) return;
+    }
+    keyrecord_t record = {
+        .event = {.key = {.row = 0, .col = 0}, .pressed = pressed, .time = timer_read(), .type = KEY_EVENT},
+    };
+    process_action(&record, action_for_keycode(code));
+}
+
+static void omp_macro_stop(void) {
+    for (uint8_t i = 0; i < omp_macro_held_count; ++i) omp_emit(omp_macro_held[i], false);
+    omp_macro_held_count = 0;
+    omp_macro_running = false;
+}
+
+static void omp_start_macro(uint8_t index) {
+    if (index >= omp_profile.snippet_count) return;
+    if (omp_macro_running) {
+        uint8_t next = (omp_macro_tail + 1u) % ARRAY_SIZE(omp_macro_queue);
+        if (next != omp_macro_head) {
+            omp_macro_queue[omp_macro_tail] = index;
+            omp_macro_tail = next;
+        }
+        return;
+    }
+    const omp_macro_t *macro = &omp_profile.snippets[index];
+    omp_macro_position = macro->start;
+    omp_macro_end = macro->start + macro->length;
+    omp_macro_timer = timer_read();
+    omp_macro_wait = 0;
+    omp_macro_running = true;
+}
+
+static void omp_tap(uint16_t code) {
+    if (code >= QK_MACRO_0 && code <= QK_MACRO_15) {
+        omp_start_macro(code - QK_MACRO_0);
+        return;
+    }
+    uint8_t next = (omp_tap_tail + 1u) % ARRAY_SIZE(omp_taps);
+    if (next == omp_tap_head) return;
+    omp_taps[omp_tap_tail] = code;
+    omp_tap_tail = next;
+}
+
+static void omp_release_all(void) {
+    for (uint8_t i = 0; i < OMP_KEYS; ++i) {
+        if (omp_keys[i].holding) omp_emit(omp_keys[i].held_code, false);
+        memset(&omp_keys[i], 0, sizeof(omp_keys[i]));
+    }
+    omp_macro_stop();
+    omp_macro_head = omp_macro_tail = 0;
+    if (omp_tap_active) omp_emit(omp_tap_active, false);
+    omp_tap_active = 0;
+    omp_tap_head = omp_tap_tail = 0;
+    omp_down_mask = 0;
+}
+
+static void omp_finish_dance(uint8_t index) {
+    omp_key_state_t *state = &omp_keys[index];
+    if (!state->taps) return;
+    uint8_t gesture = state->taps > 4 ? 3 : state->taps - 1;
+    omp_tap(state->key.codes[gesture]);
+    omp_last_key = index;
+    omp_last_gesture = gesture + 1;
+    state->taps = 0;
+    cc_dirty = true;
+}
+
+static bool omp_key_event(uint8_t index, bool pressed) {
+    if (!omp_enabled || index >= OMP_KEYS) return false;
+    omp_key_state_t *state = &omp_keys[index];
+    if (pressed) {
+        if (state->down) return true;
+        if (state->taps && (state->layer != cc_active ||
+            timer_elapsed(state->released_at) >= state->key.term)) omp_finish_dance(index);
+        if (!state->taps) {
+            state->layer = cc_active;
+            state->key = omp_profile.layers[cc_active].keys[index];
+            if (state->key.mode == 0 && state->key.codes[0] == KC_TRNS) {
+                layer_state_t active = layer_state | default_layer_state | 1u;
+                for (int8_t lower = cc_active - 1; lower >= 0; --lower) {
+                    if ((active & ((layer_state_t)1u << lower)) && lower < omp_profile.layer_count) {
+                        state->key = omp_profile.layers[lower].keys[index];
+                        state->layer = lower;
+                        if (state->key.mode || state->key.codes[0] != KC_TRNS) break;
+                    }
+                }
+            }
+        }
+        state->down = true;
+        state->pressed_at = timer_read();
+        omp_down_mask |= 1u << index;
+        omp_last_key = index;
+        omp_last_gesture = 0;
+        omp_event(1);
+        cc_dirty = true;
+        if (state->key.mode == 0) {
+            uint16_t code = state->key.codes[0];
+            if (code >= QK_MACRO_0 && code <= QK_MACRO_15) omp_tap(code);
+            else {
+                state->holding = true;
+                state->held_code = code;
+                omp_emit(code, true);
+            }
+        } else if (state->key.mode == 2) {
+            uint8_t *next = &omp_cycles[state->layer][index];
+            for (uint8_t attempt = 0; attempt < 4; ++attempt) {
+                uint8_t position = *next;
+                *next = (*next + 1u) % 4u;
+                if (state->key.codes[position] > KC_TRNS) {
+                    omp_tap(state->key.codes[position]);
+                    omp_last_gesture = position + 1;
+                    break;
+                }
+            }
+        }
+    } else {
+        if (!state->down) return true;
+        state->down = false;
+        omp_down_mask &= ~(1u << index);
+        if (state->holding) {
+            omp_emit(state->held_code, false);
+            state->holding = false;
+            state->taps = 0;
+        } else if (state->key.mode == 1) {
+            state->released_at = timer_read();
+            ++state->taps;
+            if (state->taps >= 4) omp_finish_dance(index);
+        }
+        cc_dirty = true;
+    }
+    return true;
+}
+
+static void omp_actions_tick(void) {
+    if (!omp_enabled) return;
+    for (uint8_t index = 0; index < OMP_KEYS; ++index) {
+        omp_key_state_t *s = &omp_keys[index];
+        if (s->key.mode != 1) continue;
+        if (s->down && !s->holding && timer_elapsed(s->pressed_at) >= s->key.term &&
+            s->key.codes[4] > KC_TRNS) {
+            s->holding = true;
+            s->held_code = s->key.codes[4];
+            s->taps = 0;
+            if (s->held_code >= QK_MACRO_0 && s->held_code <= QK_MACRO_15) {
+                omp_tap(s->held_code);
+                s->held_code = KC_NO;
+            } else omp_emit(s->held_code, true);
+            omp_last_gesture = 5;
+            cc_dirty = true;
+        } else if (!s->down && s->taps && timer_elapsed(s->released_at) >= s->key.term) {
+            omp_finish_dance(index);
+        }
+    }
+    if (omp_tap_active) {
+        if (timer_elapsed(omp_tap_timer) < 8) return;
+        omp_emit(omp_tap_active, false);
+        omp_tap_active = 0;
+        omp_tap_timer = timer_read();
+        return;
+    }
+    if (timer_elapsed(omp_tap_timer) < 8) return;
+    if (omp_tap_head != omp_tap_tail) {
+        omp_tap_active = omp_taps[omp_tap_head];
+        omp_tap_head = (omp_tap_head + 1u) % ARRAY_SIZE(omp_taps);
+        omp_emit(omp_tap_active, true);
+        omp_tap_timer = timer_read();
+        return;
+    }
+    if (!omp_macro_running && omp_macro_head != omp_macro_tail) {
+        uint8_t next = omp_macro_queue[omp_macro_head];
+        omp_macro_head = (omp_macro_head + 1u) % ARRAY_SIZE(omp_macro_queue);
+        omp_start_macro(next);
+    }
+    if (!omp_macro_running || timer_elapsed(omp_macro_timer) < omp_macro_wait) return;
+    if (omp_macro_position >= omp_macro_end) {
+        omp_macro_stop();
+        return;
+    }
+    const uint8_t *step = &omp_profile.macro_pool[omp_macro_position];
+    uint16_t code = step[1] | ((uint16_t)step[2] << 8);
+    omp_macro_position += 3;
+    omp_macro_timer = timer_read();
+    omp_macro_wait = 8;
+    switch (step[0]) {
+        case 1: omp_tap(code); break;
+        case 2:
+            if (omp_macro_held_count < ARRAY_SIZE(omp_macro_held)) {
+                omp_macro_held[omp_macro_held_count++] = code;
+                omp_emit(code, true);
+            }
+            break;
+        case 3:
+            for (uint8_t i = 0; i < omp_macro_held_count; ++i) {
+                if (omp_macro_held[i] == code) {
+                    omp_emit(code, false);
+                    omp_macro_held[i] = omp_macro_held[--omp_macro_held_count];
+                    break;
+                }
+            }
+            break;
+        case 4: omp_macro_wait = code; break;
+    }
+}
+
+static void omp_layer_changed(void) {
+    if (!omp_enabled || omp_last_layer == cc_active) return;
+    omp_last_layer = cc_active;
+    omp_slider_reference = -1;
+    omp_qmk_lighting_override = false;
+    omp_brightness_override[0] = omp_brightness_override[1] = 255;
+    omp_event(4);
+    // Pending multi-taps keep the actions captured on their original layer.
+}
+
+static void omp_slider_update(int16_t raw) {
+    if (!omp_enabled || raw < 0) return;
+    const omp_slider_t *slider = &omp_profile.layers[cc_active].slider;
+    int16_t clamped = raw;
+    if (clamped < slider->minimum) clamped = slider->minimum;
+    if (clamped > slider->maximum) clamped = slider->maximum;
+    int16_t value = ((int32_t)(clamped - slider->minimum) * 1023) /
+                    (slider->maximum - slider->minimum);
+    if (slider->reverse) value = 1023 - value;
+    if (omp_slider_reference < 0) {
+        omp_slider_reference = value;
+        return;
+    }
+    int16_t delta = value - omp_slider_reference;
+    if (delta > -(int16_t)slider->deadband && delta < slider->deadband) return;
+    if (slider->mode >= 2) {
+        uint8_t brightness = ((uint32_t)value * RGBLIGHT_LIMIT_VAL + 511u) / 1023u;
+        if (slider->mode != 3) omp_brightness_override[0] = brightness;
+        if (slider->mode != 2) omp_brightness_override[1] = brightness;
+        omp_slider_reference = value;
+        omp_event(8);
+    } else if (slider->mode == 1 && (delta >= slider->step || delta <= -(int16_t)slider->step)) {
+        omp_tap(delta > 0 ? slider->high : slider->low);
+        omp_slider_reference += delta > 0 ? slider->step : -(int16_t)slider->step;
+        omp_event(8);
+    }
+}

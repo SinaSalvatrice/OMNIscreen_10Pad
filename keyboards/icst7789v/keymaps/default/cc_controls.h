@@ -1,6 +1,9 @@
 // QMK Tap Dance + dedicated K0 + dual-mode EC11 controls.
 #pragma once
+#include "cc_editor_actions.h"
 #include "cc_detect.h"
+#include "cc_editor_protocol.h"
+#include "cc_editor_visuals.h"
 #include "cc_via_rgb.h"
 
 static void cc_encoder_press_action(void) {
@@ -34,6 +37,7 @@ static void cc_encoder_press_action(void) {
         }
         return;
     }
+    if (omp_enabled && !cc_display_mode) return;
     if (cc_display_mode) {
         cc_activate_layer(cc_preview);
     } else {
@@ -91,10 +95,18 @@ void keyboard_post_init_user(void) {
 #ifdef RGBLIGHT_ENABLE
     cc_rgb_load(); // Restrict QMK RGB effects to LEDs 0..13; load independent Frame settings.
 #endif
-    layer_move(1); // Default is layer 1 on every USB boot.
+    omp_load();
+    layer_move(omp_enabled ? omp_profile.default_layer : 1); // Default is layer 1 on every USB boot.
     lcd_init(); // Known-good GPIO bootstrap then QMK HW SPI.
     cc_adxl_init(); // No I2C pin ownership unless enabled after matrix relocation.
     cc_dirty = true;
+}
+
+static bool omp_k0_custom(void) {
+    if (!omp_enabled) return false;
+    const omp_key_t *key = &omp_profile.layers[cc_active].keys[11];
+    for (uint8_t i = 0; i < 5; ++i) if (key->codes[i] > KC_TRNS) return true;
+    return false;
 }
 
 static void cc_k0_update(void) {
@@ -109,7 +121,12 @@ static void cc_k0_update(void) {
         if (!cc_k0.stable) {
             cc_k0_pressed = timer_read();
             cc_k0_held = false;
+            if (omp_k0_custom() && !cc_matrix_test_view && !cc_menu_view) omp_key_event(11, true);
         } else if (!cc_k0_held) {
+            if (omp_keys[11].down) {
+                omp_key_event(11, false);
+                return;
+            }
             // Delay 1x and 2x until the tap window closes. Otherwise
             // 2x HOME would trigger before the intended 3x MATRIX.
             ++cc_k0_tap_count;
@@ -121,7 +138,8 @@ static void cc_k0_update(void) {
         }
     }
     if (!cc_k0.stable && !cc_k0_held &&
-        timer_elapsed(cc_k0_pressed) >= CC_K0_HOLD_MS) {
+        timer_elapsed(cc_k0_pressed) >= (omp_enabled ? 2000u : CC_K0_HOLD_MS)) {
+        if (omp_enabled) omp_release_all();
         cc_k0_held = true;
         cc_k0_tap_count = 0;
         cc_open_menu();
@@ -150,7 +168,9 @@ static void cc_encoder_button_update(void) {
     if (cc_encoder_button.sample != cc_encoder_button.stable &&
         timer_elapsed(cc_encoder_button.changed) >= CC_DEBOUNCE_MS) {
         cc_encoder_button.stable = cc_encoder_button.sample;
-        if (!cc_encoder_button.stable) cc_encoder_press_action();
+        if (omp_keys[10].down || (omp_enabled && !cc_matrix_test_view && !cc_menu_view && !cc_display_mode)) {
+            omp_key_event(10, !cc_encoder_button.stable);
+        } else if (!cc_encoder_button.stable) cc_encoder_press_action();
     }
 }
 
@@ -181,13 +201,14 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
 layer_state_t layer_state_set_user(layer_state_t state) {
     const uint8_t highest = get_highest_layer(state);
-    if (highest < CC_LAYER_COUNT && cc_active != highest) {
+    if (highest < omp_layer_count() && cc_active != highest) {
         cc_previous = cc_active;
         cc_active = highest;
         cc_preview = highest;
         cc_home_view = false;
         cc_dirty = true;
     }
+    omp_layer_changed();
     return state;
 }
 
@@ -203,15 +224,23 @@ static bool cc_encoder_rotate(bool clockwise) {
         else ++cc_detect_counterclockwise;
         return false; // Never emit encoder host actions during diagnosis.
     }
+    if (omp_enabled) {
+        omp_encoder_direction = clockwise ? 1 : -1;
+        omp_encoder_position = (omp_encoder_position + (clockwise ? 1 : 42)) % 43;
+        omp_event(2);
+    }
     if (cc_menu_view) {
         cc_menu_selection = (cc_menu_selection + (clockwise ? 1 : 5)) % 6;
         cc_dirty = true;
     } else if (cc_display_mode) {
         if (cc_help_view || cc_color_view) return false;
-        cc_preview = (cc_preview + (clockwise ? 1 : CC_LAYER_COUNT - 1)) %
-                     CC_LAYER_COUNT;
+        cc_preview = (cc_preview + (clockwise ? 1 : omp_layer_count() - 1)) %
+                     omp_layer_count();
         cc_home_view = cc_preview == 0;
         cc_dirty = true;
+    } else if (omp_enabled) {
+        omp_tap(omp_profile.layers[cc_active].encoders[clockwise ? 1 : 0]);
+        return false;
     } else {
         return true; // QMK encoder map: VIA remaps CCW/CW independently per layer.
     }
@@ -222,8 +251,21 @@ static bool cc_encoder_rotate(bool clockwise) {
 // encoder_update_user. Intercept both edges before QMK sends a host keycode.
 bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
     (void)keycode;
+    if (IS_KEYEVENT(record->event) && omp_enabled) {
+        const uint8_t row = record->event.key.row, col = record->event.key.col;
+        for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
+            if (cc_matrix_row[i] == row && cc_matrix_col[i] == col) {
+                if (cc_matrix_test_view) cc_matrix_test_record(row, col, record->event.pressed);
+                else {
+                    cc_last_key = i;
+                    omp_key_event(i, record->event.pressed);
+                }
+                return false;
+            }
+        }
+    }
     if (!IS_ENCODEREVENT(record->event)) return true;
-    if (!record->event.pressed) return !cc_matrix_test_view && !cc_display_mode && !cc_menu_view;
+    if (!record->event.pressed) return !omp_enabled && !cc_matrix_test_view && !cc_display_mode && !cc_menu_view;
     return cc_encoder_rotate(record->event.key.row == KEYLOC_ENCODER_CW);
 }
 
@@ -263,30 +305,28 @@ void housekeeping_task_user(void) {
 #endif
     }
 #ifdef RGBLIGHT_ENABLE
-    cc_rgb_tick();
+    if (omp_enabled) omp_lighting_tick();
+    else cc_rgb_tick();
 #endif
-    // Sample only in MATRIX TEST, so ADC reads never impact normal key latency.
-    if (cc_matrix_test_view && timer_elapsed(cc_slider_last_sample) >= 55) {
+    omp_actions_tick();
+    if (cc_matrix_test_view && omp_enabled && omp_down_mask) omp_release_all();
+    if (timer_elapsed(cc_slider_last_sample) >= 35) {
         cc_slider_last_sample = timer_read();
         const int16_t sample = analogReadPin(SLIDER_ADC_PIN);
         if (sample >= 0) {
-            cc_slider_raw = (uint16_t)sample;
-            // QMK's ADC driver defaults to 10-bit readings (0..1023).
-            uint16_t pct = (uint16_t)(((uint32_t)cc_slider_raw * 100u + 511u) / 1023u);
-            if (pct > 100) pct = 100;
-            if (!cc_slider_valid || cc_slider_pct != pct) {
-                cc_slider_pct = pct;
-                cc_dirty = true;
-            }
+            uint16_t previous_pct = cc_slider_pct;
+            cc_slider_raw = sample;
+            cc_slider_pct = ((uint32_t)sample * 100u + 511u) / 1023u;
+            if (cc_slider_pct > 100) cc_slider_pct = 100;
             cc_slider_valid = true;
-        } else {
-            cc_slider_valid = false;
-            cc_dirty = true;
-        }
-    }
-    if (!cc_matrix_test_view && timer_elapsed(cc_slider_last_sample) >= 60) {
-        cc_slider_last_sample = timer_read();
-        cc_zoom_slider_update(analogReadPin(SLIDER_ADC_PIN));
+            if (cc_matrix_test_view || (omp_enabled && omp_profile.screen.enabled)) {
+                if (cc_slider_pct != previous_pct) cc_dirty = true;
+            }
+            if (!cc_matrix_test_view && !cc_menu_view) {
+                if (omp_enabled) omp_slider_update(sample);
+                else cc_zoom_slider_update(sample);
+            }
+        } else cc_slider_valid = false;
     }
     if (cc_dirty && timer_elapsed(cc_last_draw) >= 35) cc_redraw();
 }
