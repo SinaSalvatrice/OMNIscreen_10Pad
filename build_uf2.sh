@@ -57,12 +57,21 @@ echo "Installing keyboard definition..."
 rm -rf "keyboards/$KEYBOARD"
 cp -R "$PROJECT_ROOT/keyboards/$KEYBOARD" "keyboards/$KEYBOARD"
 
-# keyboard.json is the authoritative PCF8575 custom-matrix configuration.
-# Keep the legacy GPIO hardware bootable with its own QMK-compatible metadata.
-# Never try to register PCF8575 P00..P13 as RP2040 MCU pins.
+# Source keyboard.json contains the PHYSICAL PCF8575 P00..P17 markings.
+# QMK only understands MCU pin names in matrix_pins, so prepare a build-only
+# temporary keyboard.json with nulls and a generated C header with the REAL
+# expander bit positions. The committed JSON is NEVER modified by this step.
 case "${PCF8575_MATRIX:-no}" in
     yes)
-        echo "Keyboard JSON: PCF8575 custom_lite (3 rows / 4 columns)"
+        echo "Keyboard JSON: actual PCF8575 pin mapping (custom lite)"
+        if ! command -v python3 >/dev/null 2>&1; then
+            echo "ERROR: Python 3 required to prepare PCF8575 pin mappings" >&2
+            exit 7
+        fi
+        python3 "$PROJECT_ROOT/scripts/prepare_pcf8575_matrix.py" \
+            "$PROJECT_ROOT/keyboards/$KEYBOARD/keyboard.json" \
+            "$QMK_HOME/keyboards/$KEYBOARD/keyboard.json" \
+            "$QMK_HOME/keyboards/$KEYBOARD/pcf8575_matrix_pins.h"
         ;;
     no)
         echo "Keyboard JSON: legacy RP2040 GPIO matrix"
