@@ -312,12 +312,18 @@ remain unchanged. No GitHub Actions.
 
 The primary `keyboards/icst7789v/keyboard.json` now describes the PCF8575
 hardware variant with `"matrix_pins": {"custom_lite": true, "rows":
-["NO_PIN", "NO_PIN", "NO_PIN"], "cols": ["NO_PIN", "NO_PIN", "NO_PIN",
-"NO_PIN"]}`. These `NO_PIN` entries keep the QMK 3×4 matrix dimensions
-without falsely assigning matrix signals to RP2040 GPIOs. The **actual**
-PCF8575 pins are **not MCU pin names** and must not be placed in QMK's
-`matrix_pins.rows` / `cols` lists; the custom `matrix.c` scans P00–P02
-as rows and P10–P13 as columns over I2C0 on RP2040 GP0/GP1.
+[null, null, null], "cols": [null, null, null, null]}`. The 3×4 arrays
+tell QMK the matrix dimensions, while `null` deliberately indicates that
+there are **no direct RP2040 matrix GPIO pins**. The seven keyboard wires
+remain physically connected to the PCF8575:
+- Rows: P00, P01, P02
+- Columns: P10, P11, P12, P13
+
+The **actual** PCF8575 pins are **not MCU pin names** and must not be
+placed in QMK's `matrix_pins.rows` / `cols` lists. The custom
+`matrix.c` scans the above lines over I2C0 (RP2040 GP0 SDA / GP1 SCL).
+Changing the JSON cannot repair `PCF ERROR` / `ADXL NOT FOUND` by
+itself; those statuses mean the I2C devices are not communicating.
 
 The original direct-wired QMK configuration is saved in
 `keyboards/icst7789v/keyboard_gpio.json`. During `build_uf2.bat` /
@@ -335,4 +341,4 @@ layers and encoder metadata unchanged. **After rewiring to PCF8575, build with
 configuration for safety; it is not suitable for the rewired matrix.
 
 The build still needs compilation and validation on actual hardware before
-merging/deploying. Do not enable GitHub Actions.
+flashing. Do not enable GitHub Actions.
