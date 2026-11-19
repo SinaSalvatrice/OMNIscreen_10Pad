@@ -29,15 +29,15 @@
   "matrix_pins": {
     "custom_lite": true,
     "rows": [
-      null,
-      null,
-      null
+      "P00",
+      "P01",
+      "P02"
     ],
     "cols": [
-      null,
-      null,
-      null,
-      null
+      "P10",
+      "P11",
+      "P12",
+      "P13"
     ]
   },
   "diode_direction": "ROW2COL",

@@ -1,9 +1,11 @@
 // OMNIscreen 10Pad PCF8575 16-bit I2C expander matrix.
 // Build only after rewiring the seven matrix wires to PCF8575.
-// P00,P01,P02 = three row inputs. P10,P11,P12,P13 = four column outputs.
+// Physical PCF8575 row/column pins come from the source keyboard.json
+// via the generated pcf8575 matrix header in the QMK staging copy.
 // ROW2COL diodes: select each column LOW, detect LOW on row inputs.
 // I2C0 is shared with ADXL345: PCF8575 0x20; ADXL345 0x53.
 #include "matrix.h"
+#include "pcf8575_matrix_pins.h"
 #include "i2c_master.h"
 #include "timer.h"
 #include <stdbool.h>
@@ -11,12 +13,15 @@
 
 #define CC_PCF8575_ADDRESS          (0x20u << 1) // QMK uses shifted I2C addresses.
 #define CC_PCF8575_TIMEOUT_MS       5u
-#define CC_PCF8575_COLUMNS          4u
-#define CC_PCF8575_RETRY_MS         500u
+ #define CC_PCF8575_RETRY_MS         500u
 #define CC_PCF8575_ALL_HIGH        0xFFFFu
 
+#if MATRIX_ROWS != CC_PCF_ROW_COUNT || MATRIX_COLS != CC_PCF_COL_COUNT
+#    error "PCF8575 matrix dimensions differ from generated keyboard.json mapping"
+#endif
+
 // Bits outside the assigned row and column lines stay released during scans.
-#define CC_PCF8575_UNASSIGNED 0xF0F8u
+#define CC_PCF8575_UNASSIGNED CC_PCF_UNASSIGNED_MASK
 static uint16_t cc_pcf_unassigned_low;
 static bool cc_pcf_ready = false;
 static uint16_t cc_pcf_last_retry = 0;
@@ -83,9 +88,9 @@ bool matrix_scan_custom(matrix_row_t current[]) {
 
     bool success = true;
     uint16_t unassigned_low = 0;
-    for (uint8_t column = 0; column < CC_PCF8575_COLUMNS; ++column) {
-        // Keep every row and unused pin at 1; pull only P10..P13 LOW in turn.
-        uint16_t levels = (uint16_t)(CC_PCF8575_ALL_HIGH & ~(1u << (8u + column)));
+    for (uint8_t column = 0; column < CC_PCF_COL_COUNT; ++column) {
+        // Keep every row and unused pin at 1; pull the configured column LOW.
+        uint16_t levels = (uint16_t)(CC_PCF8575_ALL_HIGH & ~((uint16_t)1u << cc_pcf_col_bits[column]));
         uint16_t sampled = 0;
         if (!cc_pcf_write(levels) || !cc_pcf_read(&sampled)) {
             success = false;
@@ -93,7 +98,7 @@ bool matrix_scan_custom(matrix_row_t current[]) {
         }
         unassigned_low |= ~sampled & CC_PCF8575_UNASSIGNED;
         for (uint8_t row = 0; row < MATRIX_ROWS; ++row) {
-            if (!(sampled & (1u << row))) {
+            if (!(sampled & ((uint16_t)1u << cc_pcf_row_bits[row]))) {
                 next[row] |= (matrix_row_t)(1u << column);
             }
         }
