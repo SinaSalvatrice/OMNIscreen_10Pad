@@ -6,6 +6,7 @@
 #include <stdio.h> // Compact numeric diagnostics for the matrix tester.
 #if CC_PCF8575_MATRIX
 extern bool cc_pcf8575_online(void);
+extern uint8_t cc_pcf8575_address(void);
 extern uint16_t cc_pcf8575_unassigned_low(void);
 #endif
 #define CC_K0_TAPS_MS 250
@@ -378,7 +379,14 @@ static void cc_matrix_test_screen(void) {
         cc_draw_text(13, 55, "MATRIX", 2, C_WHITE);
         cc_draw_text(13, 72, "4-4-2", 1, C_CYAN);
 #if CC_PCF8575_MATRIX
-        cc_draw_text(124, 9, cc_pcf8575_online() ? "PCF OK" : "PCF ERROR", 1,
+        char pcf_label[18];
+        if (cc_pcf8575_online()) {
+            (void)snprintf(pcf_label, sizeof(pcf_label), "PCF %02X OK",
+                           (unsigned)cc_pcf8575_address());
+        } else {
+            (void)snprintf(pcf_label, sizeof(pcf_label), "PCF NO I2C");
+        }
+        cc_draw_text(124, 9, pcf_label, 1,
                      cc_pcf8575_online() ? C_GREEN : C_RED);
 #else
         cc_draw_text(124, 9, "GPIO MATRIX", 1, C_YELLOW);

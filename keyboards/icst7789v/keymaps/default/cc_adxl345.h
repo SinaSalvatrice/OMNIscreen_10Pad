@@ -35,16 +35,19 @@ static cc_adxl_state_t cc_adxl = {
 #    include "i2c_master.h"
 
 // QMK's I2C API takes an eight-bit, left-shifted device address.
-#    define CC_ADXL_I2C_ADDRESS (0x53u << 1)
+// The 7-bit address depends on SDO: LOW=0x53, HIGH=0x1D.
+#    define CC_ADXL_ADDR_LOW  0x53u
+#    define CC_ADXL_ADDR_HIGH 0x1Du
+static uint8_t cc_adxl_address = CC_ADXL_ADDR_LOW;
 #    define CC_ADXL_TIMEOUT_MS 5
 
 static bool cc_adxl_read(uint8_t reg, uint8_t *data, uint8_t length) {
-    return i2c_read_register(CC_ADXL_I2C_ADDRESS, reg, data, length,
+    return i2c_read_register((uint8_t)(cc_adxl_address << 1), reg, data, length,
                              CC_ADXL_TIMEOUT_MS) == I2C_STATUS_SUCCESS;
 }
 
 static bool cc_adxl_write(uint8_t reg, uint8_t value) {
-    return i2c_write_register(CC_ADXL_I2C_ADDRESS, reg, &value, 1,
+    return i2c_write_register((uint8_t)(cc_adxl_address << 1), reg, &value, 1,
                               CC_ADXL_TIMEOUT_MS) == I2C_STATUS_SUCCESS;
 }
 
@@ -66,15 +69,24 @@ static void cc_adxl_init(void) {
 
 static void cc_adxl_probe(void) {
     uint8_t devid = 0;
+    bool wrong_id = false;
+    bool found = false;
     cc_adxl.last_probe = timer_read();
-    if (!cc_adxl_read(0x00u, &devid, 1)) {
-        cc_adxl.valid = false;
-        cc_adxl_status(CC_ADXL_MISSING);
-        return;
+    // Check both legal ADXL345 addresses; only accept the actual DEVID 0xE5.
+    // This also permits a breakout with SDO strapped HIGH to work.
+    const uint8_t candidates[2] = {CC_ADXL_ADDR_LOW, CC_ADXL_ADDR_HIGH};
+    for (uint8_t i = 0; i < 2; ++i) {
+        cc_adxl_address = candidates[i];
+        if (!cc_adxl_read(0x00u, &devid, 1)) continue;
+        if (devid == 0xE5u) {
+            found = true;
+            break;
+        }
+        wrong_id = true;
     }
-    if (devid != 0xE5u) {
+    if (!found) {
         cc_adxl.valid = false;
-        cc_adxl_status(CC_ADXL_BAD_ID);
+        cc_adxl_status(wrong_id ? CC_ADXL_BAD_ID : CC_ADXL_MISSING);
         return;
     }
     // Full-resolution +/-2g; 100 Hz output data rate; start measurements.

@@ -11,9 +11,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define CC_PCF8575_ADDRESS          (0x20u << 1) // QMK uses shifted I2C addresses.
+// QMK uses shifted 8-bit I2C addresses. PCF8575 A0-A2 may be strapped high.
+#define CC_PCF8575_ADDR_FIRST       0x20u
+#define CC_PCF8575_ADDR_LAST        0x27u
+static uint8_t cc_pcf_address = CC_PCF8575_ADDR_FIRST;
 #define CC_PCF8575_TIMEOUT_MS       5u
- #define CC_PCF8575_RETRY_MS         500u
+#define CC_PCF8575_RETRY_MS         1500u
 #define CC_PCF8575_ALL_HIGH        0xFFFFu
 
 #if MATRIX_ROWS != CC_PCF_ROW_COUNT || MATRIX_COLS != CC_PCF_COL_COUNT
@@ -31,13 +34,13 @@ static uint16_t cc_pcf_last_retry = 0;
 // First byte = P00..P07; second byte = P10..P17.
 static bool cc_pcf_write(uint16_t levels) {
     uint8_t data[2] = {(uint8_t)levels, (uint8_t)(levels >> 8)};
-    return i2c_transmit(CC_PCF8575_ADDRESS, data, sizeof(data),
+    return i2c_transmit((uint8_t)(cc_pcf_address << 1), data, sizeof(data),
                         CC_PCF8575_TIMEOUT_MS) == I2C_STATUS_SUCCESS;
 }
 
 static bool cc_pcf_read(uint16_t *levels) {
     uint8_t data[2];
-    if (i2c_receive(CC_PCF8575_ADDRESS, data, sizeof(data),
+    if (i2c_receive((uint8_t)(cc_pcf_address << 1), data, sizeof(data),
                     CC_PCF8575_TIMEOUT_MS) != I2C_STATUS_SUCCESS) {
         return false;
     }
@@ -49,15 +52,37 @@ bool cc_pcf8575_online(void) {
     return cc_pcf_ready;
 }
 
+uint8_t cc_pcf8575_address(void) {
+    return cc_pcf_address;
+}
+
 uint16_t cc_pcf8575_unassigned_low(void) {
     return cc_pcf_unassigned_low;
 }
 
 static bool cc_pcf_init(void) {
     cc_pcf_last_retry = timer_read();
-    // All rows and columns released; inputs have the PCF8575 weak pull-ups.
-    cc_pcf_ready = cc_pcf_write(CC_PCF8575_ALL_HIGH);
-    return cc_pcf_ready;
+    cc_pcf_ready = false;
+
+    // First try the previously working 7-bit address, then scan the 8
+    // allowed address-jumper settings. The initial 2-byte read is non-invasive.
+    uint16_t ignored = 0;
+    if (cc_pcf_read(&ignored) && cc_pcf_write(CC_PCF8575_ALL_HIGH)) {
+        cc_pcf_ready = true;
+        return true;
+    }
+
+    for (uint8_t candidate = CC_PCF8575_ADDR_FIRST;
+         candidate <= CC_PCF8575_ADDR_LAST; ++candidate) {
+        if (candidate == cc_pcf_address) continue;
+        cc_pcf_address = candidate;
+        if (cc_pcf_read(&ignored) && cc_pcf_write(CC_PCF8575_ALL_HIGH)) {
+            cc_pcf_ready = true;
+            return true;
+        }
+    }
+    cc_pcf_address = CC_PCF8575_ADDR_FIRST;
+    return false;
 }
 
 void matrix_init_custom(void) {
