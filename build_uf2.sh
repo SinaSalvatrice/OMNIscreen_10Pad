@@ -61,7 +61,7 @@ cp -R "$PROJECT_ROOT/keyboards/$KEYBOARD" "keyboards/$KEYBOARD"
 # QMK only understands MCU pin names in matrix_pins, so prepare a build-only
 # temporary keyboard.json with nulls and a generated C header with the REAL
 # expander bit positions. The committed JSON is NEVER modified by this step.
-case "${PCF8575_MATRIX:-no}" in
+case "${PCF8575_MATRIX:-yes}" in
     yes)
         echo "Keyboard JSON: actual PCF8575 pin mapping (custom lite)"
         if ! command -v python3 >/dev/null 2>&1; then
@@ -89,7 +89,7 @@ rm -f "${KEYBOARD}_${KEYMAP}.uf2"
 echo "Building $KEYBOARD:$KEYMAP..."
 # SKIP_GIT avoids QMK's normal full recursive submodule scan. The required
 # RP2040 submodules were initialized explicitly above.
-make SKIP_GIT=1 PCF8575_MATRIX="${PCF8575_MATRIX:-no}" "$KEYBOARD:$KEYMAP"
+make SKIP_GIT=1 PCF8575_MATRIX="${PCF8575_MATRIX:-yes}" "$KEYBOARD:$KEYMAP"
 
 UF2="$QMK_HOME/${KEYBOARD}_${KEYMAP}.uf2"
 if [[ ! -f "$UF2" ]]; then

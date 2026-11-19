@@ -42,6 +42,7 @@
 #define I2C_DRIVER I2CD0
 #define I2C1_SDA_PIN GP0
 #define I2C1_SCL_PIN GP1
+#define I2C1_CLOCK_SPEED 100000
 // RP2040 GPIO function 3 is hardware I2C; QMK's generic names are I2C1_*.
 #define I2C1_SDA_PAL_MODE 3
 #define I2C1_SCL_PAL_MODE 3
