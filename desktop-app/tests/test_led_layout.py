@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from led_layout import (default_positions, validate_positions, read_positions,
-                        write_positions, to_canvas, from_canvas, LED_COUNT, MAIN_COUNT)
+                        write_positions, to_canvas, from_canvas, square_bounds, LED_COUNT, MAIN_COUNT)
 
 
 class LayoutTests(unittest.TestCase):
@@ -44,10 +44,21 @@ class LayoutTests(unittest.TestCase):
             validate_positions({"schema": "omnipad-led-layout", "version": 1,
                                 "led_count": 57, "positions": points})
 
+    def test_square_preview_bounds_landscape_and_portrait(self):
+        for width, height in ((650, 440), (440, 650), (500, 500)):
+            left, top, right, bottom = square_bounds(width, height)
+            self.assertEqual(right - left, bottom - top)
+            self.assertAlmostEqual((left + right) / 2, width / 2)
+            self.assertAlmostEqual((top + bottom) / 2, height / 2)
+            x, y = to_canvas([0.5, 0.5], width, height)
+            self.assertAlmostEqual(x, width / 2)
+            self.assertAlmostEqual(y, height / 2)
+
     def test_canvas_coordinates_and_clamp(self):
-        for point in ([0.0, 0.0], [1.0, 1.0], [0.34567, 0.78912]):
-            x, y = to_canvas(point, 650, 440)
-            self.assertEqual(from_canvas(x, y, 650, 440), point)
+        for width, height in ((650, 440), (440, 650), (500, 500)):
+            for point in ([0.0, 0.0], [1.0, 1.0], [0.34567, 0.78912]):
+                x, y = to_canvas(point, width, height)
+                self.assertEqual(from_canvas(x, y, width, height), point)
         self.assertEqual(from_canvas(-100, 9999, 650, 440), [0, 1])
 
 

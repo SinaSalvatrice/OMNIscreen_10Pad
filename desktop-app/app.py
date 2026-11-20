@@ -16,7 +16,7 @@ from profile import (
 )
 from screen_editor import ScreenEditor
 from led_layout import (LED_COUNT, MAIN_COUNT, LED_LAYOUT_PATH, default_positions,
-                        read_positions, write_positions, to_canvas, from_canvas)
+                        read_positions, write_positions, to_canvas, from_canvas, square_bounds)
 from tester import Tester
 from ui_helpers import BG, PANEL, KEY, TEXT, MUTED, ACCENT, Form, ScrollPanel, button, label, style
 from via import OmniPad, ViaError, UnsupportedCommand
@@ -652,7 +652,7 @@ class Editor:
         button(actions, "Zurücksetzen", self.reset_led_layout).pack(side="left", padx=(5, 0))
         self.led_status = tk.StringVar(value="LED anklicken und ziehen · Pfeiltasten: 1 px · Shift: 5 px")
         label(left, "", color=MUTED, textvariable=self.led_status).pack(anchor="w", padx=18, pady=(3, 0))
-        label(left, "Main 0–13 · Frame 14–56 · Reihenfolge bleibt unverändert",
+        label(left, "1:1 Vorschau · Main 0–13 · Frame 14–56 · Reihenfolge unverändert",
               color=MUTED).pack(anchor="w", padx=18, pady=(0, 8))
         if self.led_layout_warning:
             self.led_status.set("LED-Layout ungültig – Standardpositionen geladen")
@@ -833,7 +833,8 @@ class Editor:
         canvas = self.light_canvas
         canvas.delete("all")
         width, height = canvas.winfo_width(), canvas.winfo_height()
-        canvas.create_rectangle(12, 12, width - 12, height - 12,
+        left, top, right, bottom = square_bounds(width, height)
+        canvas.create_rectangle(left, top, right, bottom,
                                 fill="#192028", outline="#3c4855", width=2)
         for zone_index, count in ((0, 14), (1, 43)):
             zone = self.current_layer["lighting"][zone_index]
@@ -881,7 +882,7 @@ class Editor:
                         x, y, text=str(led_number), fill=ink,
                         font=("Segoe UI", 8 if zone_index == 0 else 7, "bold"),
                         tags=(f"led-{led_number}",))
-        canvas.create_text(width / 2, 24, text=self.current_layer["name"], fill=TEXT,
+        canvas.create_text(width / 2, top + 13, text=self.current_layer["name"], fill=TEXT,
                            font=("Segoe UI", 14, "bold"))
 
     def create_snippets(self):
