@@ -66,14 +66,21 @@ def write_positions(positions, path=LED_LAYOUT_PATH):
     atomic_json(path, data)
 
 
+def square_bounds(width, height):
+    """Centered 1:1 LED arrangement within the available editor canvas."""
+    size = max(1, min(width, height) - 24)
+    left, top = (width - size) / 2, (height - size) / 2
+    return left, top, left + size, top + size
+
+
 def to_canvas(point, width, height):
-    span_x = max(1, width - 2 * PADDING)
-    span_y = max(1, height - 2 * PADDING)
-    return PADDING + point[0] * span_x, PADDING + point[1] * span_y
+    left, top, right, _ = square_bounds(width, height)
+    span = max(1, right - left - 2 * PADDING)
+    return left + PADDING + point[0] * span, top + PADDING + point[1] * span
 
 
 def from_canvas(x, y, width, height):
-    span_x = max(1, width - 2 * PADDING)
-    span_y = max(1, height - 2 * PADDING)
-    return [round(min(1, max(0, (x - PADDING) / span_x)), 5),
-            round(min(1, max(0, (y - PADDING) / span_y)), 5)]
+    left, top, right, _ = square_bounds(width, height)
+    span = max(1, right - left - 2 * PADDING)
+    return [round(min(1, max(0, (x - left - PADDING) / span)), 5),
+            round(min(1, max(0, (y - top - PADDING) / span)), 5)]
