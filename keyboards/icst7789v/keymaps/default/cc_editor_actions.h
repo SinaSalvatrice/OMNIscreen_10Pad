@@ -4,7 +4,7 @@
 
 typedef struct {
     bool down, holding;
-    uint8_t taps, layer;
+    uint8_t taps, layer, origin_layer;
     uint16_t pressed_at, released_at, held_code;
     omp_key_t key;
 } omp_key_state_t;
@@ -141,9 +141,10 @@ static bool omp_key_event(uint8_t index, bool pressed) {
     omp_key_state_t *state = &omp_keys[index];
     if (pressed) {
         if (state->down) return true;
-        if (state->taps && (state->layer != cc_active ||
+        if (state->taps && (state->origin_layer != cc_active ||
             timer_elapsed(state->released_at) >= state->key.term)) omp_finish_dance(index);
         if (!state->taps) {
+            state->origin_layer = cc_active;
             state->layer = cc_active;
             state->key = omp_profile.layers[cc_active].keys[index];
             if (state->key.mode == 0 && state->key.codes[0] == KC_TRNS) {
