@@ -6,6 +6,52 @@
 #include "cc_editor_visuals.h"
 #include "cc_via_rgb.h"
 
+static void cc_clear_eeprom(void) {
+    eeprom_update_dword((uint32_t *)(uintptr_t)omp_slot_address(0), 0);
+    eeprom_update_dword((uint32_t *)(uintptr_t)omp_slot_address(1), 0);
+    eeconfig_init();
+    soft_reset_keyboard();
+}
+
+static bool omp_device_action(uint16_t code, bool pressed) {
+    if (code < OMP_ACTION_LAYERS || code > OMP_ACTION_NONE) return false;
+    if (!pressed || cc_tester_active || code == OMP_ACTION_NONE) return true;
+    if (code == OMP_ACTION_MATRIX) {
+        cc_matrix_test_toggle();
+        return true;
+    }
+    if (code == OMP_ACTION_EEPROM) {
+        cc_eeprom_confirm = true;
+        cc_eeprom_confirm_visible = false;
+        cc_eeprom_confirm_at = timer_read();
+        cc_dirty = true;
+        return true;
+    }
+    cc_matrix_test_exit();
+    switch (code) {
+        case OMP_ACTION_LAYERS:
+        case OMP_ACTION_CUSTOM_SCREEN:
+        case OMP_ACTION_HELP:
+        case OMP_ACTION_COLORS:
+            cc_switch_encoder(true);
+            if (code == OMP_ACTION_LAYERS) cc_screen_selection = CC_SCREEN_LAYERS;
+            if (code == OMP_ACTION_CUSTOM_SCREEN) cc_screen_selection = CC_SCREEN_CUSTOM;
+            if (code == OMP_ACTION_HELP) cc_help_view = true;
+            if (code == OMP_ACTION_COLORS) cc_color_view = true;
+            break;
+        case OMP_ACTION_HOME:
+            cc_activate_layer(omp_profile.default_layer);
+            cc_switch_encoder(true);
+            cc_screen_selection = CC_SCREEN_LAYERS;
+            break;
+        case OMP_ACTION_MENU: cc_open_menu(); break;
+        case OMP_ACTION_ENCODER_MODE: cc_switch_encoder(!cc_display_mode); break;
+    }
+    omp_screen_invalid = true;
+    cc_dirty = true;
+    return true;
+}
+
 static void cc_encoder_press_action(void) {
     if (cc_matrix_test_view) {
         ++cc_detect_encoder_pushes;
@@ -105,30 +151,70 @@ void keyboard_post_init_user(void) {
 static bool omp_k0_custom(void) {
     if (!omp_enabled) return false;
     const omp_key_t *key = &omp_profile.layers[cc_active].keys[11];
-    for (uint8_t i = 0; i < 5; ++i) if (key->codes[i] > KC_TRNS) return true;
+    uint8_t slots = key->mode == 0 ? 1 : key->mode == 1 ? 5 : 4;
+    for (uint8_t i = 0; i < slots; ++i) if (key->codes[i] > KC_TRNS) return true;
     return false;
 }
 
-static void cc_k0_update(void) {
-    const bool raw = gpio_read_pin(K0_SW);
-    if (raw != cc_k0.sample) {
-        cc_k0.sample = raw;
-        cc_k0.changed = timer_read();
+static bool cc_button_update(cc_button_t *button, pin_t pin) {
+    const bool raw = gpio_read_pin(pin);
+    if (raw != button->sample) {
+        button->sample = raw;
+        button->changed = timer_read();
     }
-    if (cc_k0.sample != cc_k0.stable &&
-        timer_elapsed(cc_k0.changed) >= CC_DEBOUNCE_MS) {
-        cc_k0.stable = cc_k0.sample;
-        cc_tester_record(CC_SIGNAL_K0, 0, !cc_k0.stable);
+    if (button->sample == button->stable || timer_elapsed(button->changed) < CC_DEBOUNCE_MS) return false;
+    button->stable = button->sample;
+    return true;
+}
+
+static bool cc_eeprom_reset_update(void) {
+    switch (cc_reset_state) {
+        case CC_RESET_WAIT_RELEASE:
+            if (cc_k0.stable && cc_encoder_button.stable && cc_k0.sample && cc_encoder_button.sample)
+                cc_reset_state = CC_RESET_IDLE;
+            return true;
+        case CC_RESET_IDLE:
+            if (cc_k0.stable || cc_encoder_button.stable) return false;
+            cc_k0_tap_count = 0;
+            omp_release_all();
+            cc_reset_started = timer_read();
+            cc_reset_state = CC_RESET_HOLDING;
+            cc_dirty = true;
+            break;
+        case CC_RESET_HOLDING:
+            if (cc_k0.stable || cc_encoder_button.stable) {
+                cc_reset_state = CC_RESET_WAIT_RELEASE;
+                cc_matrix_full_redraw = true;
+                cc_dirty = true;
+            } else if (!cc_k0.sample && !cc_encoder_button.sample &&
+                       timer_elapsed(cc_reset_started) >= CC_EEPROM_HOLD_MS) {
+                cc_clear_eeprom();
+            }
+            break;
+    }
+    return true;
+}
+
+static void cc_k0_update(bool changed) {
+    static bool mapped;
+    if (changed) {
+        if (!cc_k0.stable) {
+            mapped = omp_k0_custom() && !cc_matrix_test_view && !cc_menu_view;
+            if (mapped) {
+                cc_k0_tap_count = 0;
+                omp_key_event(11, true);
+            }
+        } else if (mapped) {
+            mapped = false;
+            omp_key_event(11, false);
+            return;
+        }
+        if (mapped) return;
         if (cc_tester_active && cc_matrix_test_view && cc_k0.stable) return;
         if (!cc_k0.stable) {
             cc_k0_pressed = timer_read();
             cc_k0_held = false;
-            if (omp_k0_custom() && !cc_matrix_test_view && !cc_menu_view) omp_key_event(11, true);
         } else if (!cc_k0_held) {
-            if (omp_keys[11].down) {
-                omp_key_event(11, false);
-                return;
-            }
             // Delay 1x and 2x until the tap window closes. Otherwise
             // 2x HOME would trigger before the intended 3x MATRIX.
             ++cc_k0_tap_count;
@@ -139,6 +225,7 @@ static void cc_k0_update(void) {
             }
         }
     }
+    if (mapped) return;
     if (!cc_k0.stable && !cc_k0_held &&
         timer_elapsed(cc_k0_pressed) >= (omp_enabled ? 2000u : CC_K0_HOLD_MS)) {
         if (omp_enabled) omp_release_all();
@@ -164,20 +251,20 @@ static void cc_k0_update(void) {
     }
 }
 
-static void cc_encoder_button_update(void) {
-    const bool raw = gpio_read_pin(ENCODER_SW);
-    if (raw != cc_encoder_button.sample) {
-        cc_encoder_button.sample = raw;
-        cc_encoder_button.changed = timer_read();
+static void cc_encoder_button_action(void) {
+    bool navigation = false;
+    if (omp_enabled && cc_display_mode) {
+        const omp_key_t *key = &omp_profile.layers[cc_active].keys[10];
+        uint8_t slots = key->mode == 0 ? 1 : key->mode == 1 ? 5 : 4;
+        for (uint8_t i = 0; i < slots; ++i) {
+            uint16_t code = key->codes[i];
+            if ((code >= OMP_ACTION_LAYERS && code <= OMP_ACTION_NONE) ||
+                IS_QK_TO(code) || IS_QK_MOMENTARY(code) || IS_QK_TOGGLE_LAYER(code)) navigation = true;
+        }
     }
-    if (cc_encoder_button.sample != cc_encoder_button.stable &&
-        timer_elapsed(cc_encoder_button.changed) >= CC_DEBOUNCE_MS) {
-        cc_encoder_button.stable = cc_encoder_button.sample;
-        cc_tester_record(CC_SIGNAL_ENCODER_PUSH, 0, !cc_encoder_button.stable);
-        if (omp_keys[10].down || (omp_enabled && !cc_matrix_test_view && !cc_menu_view && !cc_display_mode)) {
-            omp_key_event(10, !cc_encoder_button.stable);
-        } else if (!cc_encoder_button.stable) cc_encoder_press_action();
-    }
+    if (omp_keys[10].down || (omp_enabled && !cc_matrix_test_view && !cc_menu_view && (!cc_display_mode || navigation))) {
+        omp_key_event(10, !cc_encoder_button.stable);
+    } else if (!cc_encoder_button.stable) cc_encoder_press_action();
 }
 
 // Physical safety behavior precedes whatever VIA assigned at that matrix cell.
@@ -219,9 +306,30 @@ layer_state_t layer_state_set_user(layer_state_t state) {
 }
 
 void matrix_scan_user(void) {
+    static bool cancel_k0_down;
     // K0 (GP11) and encoder PUSH (GP10) are outside the matrix.
-    cc_k0_update();
-    cc_encoder_button_update();
+    const bool k0_changed = cc_button_update(&cc_k0, K0_SW);
+    const bool encoder_changed = cc_button_update(&cc_encoder_button, ENCODER_SW);
+    if (k0_changed) cc_tester_record(CC_SIGNAL_K0, 0, !cc_k0.stable);
+    if (encoder_changed) cc_tester_record(CC_SIGNAL_ENCODER_PUSH, 0, !cc_encoder_button.stable);
+    if (!cc_eeprom_reset_update()) {
+        if (cc_eeprom_confirm) {
+            if (k0_changed && !cc_k0.stable) {
+                cc_eeprom_confirm = false;
+                cancel_k0_down = true;
+                cc_dirty = true;
+                return;
+            }
+            if (encoder_changed && !cc_encoder_button.stable && cc_eeprom_confirm_visible) cc_clear_eeprom();
+            if (k0_changed && cc_k0.stable && omp_keys[11].down) cc_k0_update(true);
+            if (encoder_changed && cc_encoder_button.stable && omp_keys[10].down) cc_encoder_button_action();
+            return;
+        }
+        if (cancel_k0_down) {
+            if (cc_k0.stable) cancel_k0_down = false;
+        } else cc_k0_update(k0_changed);
+        if (encoder_changed) cc_encoder_button_action();
+    }
 }
 
 static bool cc_encoder_rotate(bool clockwise) {
@@ -258,10 +366,7 @@ static bool cc_encoder_rotate(bool clockwise) {
 // encoder_update_user. Intercept both edges before QMK sends a host keycode.
 bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
     (void)keycode;
-    if (IS_KEYEVENT(record->event) && cc_matrix_test_view) {
-        cc_tester_matrix(record->event.key.row, record->event.key.col, record->event.pressed);
-        return false;
-    }
+    if (IS_KEYEVENT(record->event) && cc_matrix_test_view) return false;
     if (IS_KEYEVENT(record->event) && omp_enabled) {
         const uint8_t row = record->event.key.row, col = record->event.key.col;
         for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
@@ -300,7 +405,12 @@ static void cc_zoom_slider_update(int16_t sample) {
 }
 
 void housekeeping_task_user(void) {
+    if (cc_eeprom_confirm && timer_elapsed(cc_eeprom_confirm_at) >= 15000u) {
+        cc_eeprom_confirm = false;
+        cc_dirty = true;
+    }
     if (cc_matrix_test_view) {
+        cc_tester_sample_matrix();
         cc_adxl_poll(); // Slow bounded I2C reads; never in the normal key path.
         if (cc_adxl.changed) cc_dirty = true;
 #if CC_PCF8575_MATRIX
@@ -314,10 +424,28 @@ void housekeeping_task_user(void) {
 #endif
     }
 #ifdef RGBLIGHT_ENABLE
+    static bool preview_was_active;
+    static uint8_t preview_qmk_mode;
+    if (omp_preview_active && (cc_matrix_test_view || timer_elapsed(omp_preview_at) >= OMP_LED_PREVIEW_MS)) {
+        omp_preview_active = false;
+    }
+    if (omp_preview_active && !preview_was_active) {
+        preview_qmk_mode = rgblight_get_mode();
+        if (preview_qmk_mode > RGBLIGHT_MODE_STATIC_LIGHT) {
+            rgblight_mode_noeeprom(RGBLIGHT_MODE_STATIC_LIGHT);
+        }
+    }
+    if (preview_was_active && !omp_preview_active && !omp_enabled) {
+        rgblight_driver.set_color_all(0, 0, 0);
+        if (preview_qmk_mode > RGBLIGHT_MODE_STATIC_LIGHT) rgblight_mode_noeeprom(preview_qmk_mode);
+        rgblight_sethsv_noeeprom(rgblight_get_hue(), rgblight_get_sat(), rgblight_get_val());
+        cc_main_dirty = cc_frame_dirty = true;
+    }
     if (!cc_tester_preview_leds()) {
-        if (omp_enabled) omp_lighting_tick();
+        if (omp_preview_active || omp_enabled) omp_lighting_tick(omp_preview_active);
         else cc_rgb_tick();
     }
+    preview_was_active = omp_preview_active;
 #endif
     omp_actions_tick();
     if (cc_matrix_test_view && omp_enabled && omp_down_mask) omp_release_all();
@@ -330,7 +458,7 @@ void housekeeping_task_user(void) {
             const uint16_t value = omp_slider_value(cc_slider_raw);
             cc_slider_pct = ((uint32_t)value * 100u + 511u) / 1023u;
             cc_slider_valid = true;
-            if (cc_matrix_test_view || (omp_enabled && omp_profile.screen.enabled)) {
+            if (cc_matrix_test_view || cc_custom_screen_selected()) {
                 if (cc_slider_pct != previous_pct) cc_dirty = true;
             }
             if (!cc_matrix_test_view && !cc_menu_view) {

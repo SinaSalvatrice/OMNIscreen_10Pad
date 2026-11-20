@@ -11,6 +11,12 @@
 #define OMP_SLOT_SIZE 6144
 #define OMP_STORAGE_START 4096
 
+enum {
+    OMP_ACTION_LAYERS = 0x7E40, OMP_ACTION_CUSTOM_SCREEN, OMP_ACTION_MATRIX,
+    OMP_ACTION_MENU, OMP_ACTION_HOME, OMP_ACTION_ENCODER_MODE,
+    OMP_ACTION_HELP, OMP_ACTION_COLORS, OMP_ACTION_EEPROM, OMP_ACTION_NONE,
+};
+
 typedef struct __attribute__((packed)) {
     uint8_t mode; // 0 direct, 1 tap dance, 2 cycle
     uint16_t term;
@@ -83,6 +89,17 @@ static uint16_t omp_received;
 static bool omp_receiving;
 static uint16_t omp_transfer_timer;
 static uint32_t omp_expected_checksum;
+
+#define OMP_LED_PREVIEW_MS 1800u
+static omp_zone_t omp_preview_zones[2];
+static bool omp_preview_active;
+static uint16_t omp_preview_at;
+
+static bool omp_zone_valid(const omp_zone_t *zone) {
+    return zone->effect <= 8 && zone->brightness <= RGBLIGHT_LIMIT_VAL &&
+           zone->flags <= 3 && zone->triggers <= 15 && zone->duration;
+}
+
 static uint32_t omp_checksum(const void *data, uint16_t size) {
     const uint8_t *bytes = data;
     uint32_t result = 2166136261u;
@@ -111,9 +128,7 @@ static bool omp_profile_valid(const omp_profile_t *p) {
             if (key->mode > 2 || key->term < 80 || key->term > 2000 || key->label[11]) return false;
         }
         for (uint8_t i = 0; i < 2; ++i) {
-            const omp_zone_t *z = &l->zones[i];
-            if (z->effect > 8 || z->brightness > RGBLIGHT_LIMIT_VAL ||
-                z->flags > 3 || z->triggers > 15 || !z->duration) return false;
+            if (!omp_zone_valid(&l->zones[i])) return false;
         }
     }
     for (uint8_t i = 0; i < p->screen.count; ++i) {

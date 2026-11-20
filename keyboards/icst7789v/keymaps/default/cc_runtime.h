@@ -12,6 +12,7 @@ extern uint16_t cc_pcf8575_unassigned_low(void);
 #define CC_K0_TAPS_MS 250
 #define CC_K0_HOLD_MS 620
 #define CC_DEBOUNCE_MS 25
+#define CC_EEPROM_HOLD_MS 5000u
 
 static uint8_t cc_active = 1;
 static uint8_t cc_previous = 0;
@@ -25,6 +26,11 @@ static bool cc_help_view = false;
 static bool cc_color_view = false;
 static bool cc_matrix_test_view = false;
 static bool cc_tester_active;
+typedef enum { CC_SCREEN_AUTO, CC_SCREEN_LAYERS, CC_SCREEN_CUSTOM } cc_screen_selection_t;
+static cc_screen_selection_t cc_screen_selection;
+static bool cc_eeprom_confirm;
+static bool cc_eeprom_confirm_visible;
+static uint16_t cc_eeprom_confirm_at;
 // Physical ADC count (0..1023) and calibrated position.
 static uint16_t cc_slider_raw = 0;
 static uint16_t cc_slider_pct = 0;
@@ -33,6 +39,7 @@ static uint16_t cc_slider_last_drawn = UINT16_MAX;
 static bool cc_slider_valid = false;
 // Physical switch status is tracked separately from QMK Tap Dance.
 static bool cc_matrix_down[CC_KEY_COUNT] = {false};
+static matrix_row_t cc_matrix_sampled[MATRIX_ROWS];
 static uint16_t cc_matrix_changed = 0;
 static uint16_t cc_matrix_hits = 0;
 static uint8_t cc_matrix_last_key = 255;
@@ -57,6 +64,9 @@ static uint8_t cc_k0_tap_count = 0;
 static uint16_t cc_k0_pressed = 0;
 static uint16_t cc_k0_released = 0;
 static bool cc_k0_held = false;
+typedef enum { CC_RESET_WAIT_RELEASE, CC_RESET_IDLE, CC_RESET_HOLDING } cc_reset_state_t;
+static cc_reset_state_t cc_reset_state;
+static uint16_t cc_reset_started;
 
 static const uint8_t *cc_glyph(char ch) {
     if (ch >= '0' && ch <= '9') return font_numbers[ch - '0'];
@@ -209,6 +219,7 @@ static void cc_layer_screen(void) {
 // No host keycodes or Tap Dance effects may escape while this view is active.
 static void cc_matrix_test_enter(void) {
     if (cc_matrix_test_view) return;
+    cc_eeprom_confirm = false;
     cc_matrix_return_home = cc_home_view;
     cc_matrix_return_preview = cc_preview;
     cc_matrix_return_encoder_mode = cc_display_mode;
@@ -219,6 +230,7 @@ static void cc_matrix_test_enter(void) {
     cc_display_mode = true;
     cc_matrix_last_key = 255;
     cc_matrix_hits = 0;
+    memset(cc_matrix_sampled, 0, sizeof(cc_matrix_sampled));
     for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) cc_matrix_down[i] = false;
     cc_matrix_changed = (1u << CC_KEY_COUNT) - 1u;
     cc_matrix_full_redraw = true;
@@ -451,15 +463,34 @@ static void cc_color_screen(bool show_exit) {
 static bool omp_screen_invalid = true;
 static void omp_screen_render(void);
 
+static bool cc_custom_screen_selected(void) {
+    return omp_enabled && (cc_screen_selection == CC_SCREEN_CUSTOM ||
+           (cc_screen_selection == CC_SCREEN_AUTO && omp_profile.screen.enabled));
+}
+
 static void cc_redraw(void) {
     if (!panel_ready) return;
     if (cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view) omp_screen_invalid = true;
-    if (cc_matrix_test_view && cc_tester_output == 1) cc_color_screen(false);
+    if (cc_reset_state == CC_RESET_HOLDING) {
+        omp_screen_invalid = true;
+        lcd_fill(0, 0, LCD_W, LCD_H, C_BLACK);
+        cc_draw_text(15, 84, "HOLD BOTH 5S TO RESET", 2, C_YELLOW);
+        cc_draw_text(15, 119, "RELEASE TO CANCEL", 1, C_WHITE);
+    } else if (cc_eeprom_confirm) {
+        if (!cc_eeprom_confirm_visible) {
+            omp_screen_invalid = true;
+            lcd_fill(0, 0, LCD_W, LCD_H, C_BLACK);
+            cc_draw_text(15, 70, "CLEAR EEPROM?", 2, C_YELLOW);
+            cc_draw_text(15, 115, "PUSH ENCODER TO ERASE", 1, C_WHITE);
+            cc_draw_text(15, 139, "K0 TO CANCEL", 1, C_WHITE);
+            cc_eeprom_confirm_visible = true;
+        }
+    } else if (cc_matrix_test_view && cc_tester_output == 1) cc_color_screen(false);
     else if (cc_matrix_test_view) cc_matrix_test_screen();
     else if (cc_color_view) cc_color_screen(true);
     else if (cc_help_view) cc_help_screen();
     else if (cc_menu_view) cc_menu_screen();
-    else if (omp_enabled && omp_profile.screen.enabled) omp_screen_render();
+    else if (cc_custom_screen_selected()) omp_screen_render();
     else cc_layer_screen();
     cc_dirty = false;
     cc_last_draw = timer_read();

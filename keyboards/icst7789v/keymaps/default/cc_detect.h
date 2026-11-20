@@ -1,5 +1,4 @@
-// Read-only editor telemetry. Button activity is shared only while the user
-// has entered the physical MATRIX test, which suppresses host key output.
+// Read-only editor telemetry. Reports held switches independently of key assignments.
 #pragma once
 
 static uint8_t cc_detect_clockwise;
@@ -14,10 +13,10 @@ static bool cc_detect_via_snapshot(uint8_t *data, uint8_t length) {
 
     const bool enabled = cc_matrix_test_view;
     uint16_t down = 0;
-    if (enabled) {
-        for (uint8_t key = 0; key < CC_KEY_COUNT; ++key) {
-            if (cc_matrix_down[key]) down |= (uint16_t)(1u << key);
-        }
+    for (uint8_t key = 0; key < CC_KEY_COUNT; ++key) {
+        const bool pressed = enabled ? cc_matrix_down[key] :
+            (matrix_get_row(cc_matrix_row[key]) & ((matrix_row_t)1u << cc_matrix_col[key])) != 0;
+        if (pressed) down |= (uint16_t)(1u << key);
     }
 
     data[3] = 'O';
@@ -27,7 +26,6 @@ static bool cc_detect_via_snapshot(uint8_t *data, uint8_t length) {
     data[7] = 2;
     data[8] = cc_active;
     data[9] = enabled;
-    if (!enabled && omp_enabled) down = omp_down_mask;
     if (!cc_k0.stable) down |= 1u << 11;
     if (!cc_encoder_button.stable) down |= 1u << 10;
     data[10] = (uint8_t)down;

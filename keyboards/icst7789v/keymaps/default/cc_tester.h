@@ -30,9 +30,20 @@ static void cc_tester_record(uint8_t source, uint8_t detail, uint16_t value) {
     ++cc_signal_count;
 }
 
-static void cc_tester_matrix(uint8_t row, uint8_t col, bool pressed) {
-    cc_tester_record(CC_SIGNAL_MATRIX, (row << 4) | col, pressed);
-    cc_matrix_test_record(row, col, pressed);
+static void cc_tester_sample_matrix(void) {
+    for (uint8_t row = 0; row < MATRIX_ROWS; ++row) {
+        const matrix_row_t current = matrix_get_row(row);
+        const matrix_row_t changes = current ^ cc_matrix_sampled[row];
+        cc_matrix_sampled[row] = current;
+        for (uint8_t col = 0; col < MATRIX_COLS && changes; ++col) {
+            const matrix_row_t bit = (matrix_row_t)1u << col;
+            if (changes & bit) {
+                const bool pressed = (current & bit) != 0;
+                cc_tester_record(CC_SIGNAL_MATRIX, (row << 4) | col, pressed);
+                cc_matrix_test_record(row, col, pressed);
+            }
+        }
+    }
 }
 
 static bool cc_tester_report(uint8_t *data) {

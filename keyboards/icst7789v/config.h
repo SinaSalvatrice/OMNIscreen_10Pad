@@ -17,7 +17,7 @@
 #define CC_K9_DOUBLE_TAP_MS 240
 // v2 custom lighting data stores the original 14-LED palette plus Frame settings.
 #define EECONFIG_USER_DATA_SIZE 17
-#define VIA_FIRMWARE_VERSION 5
+#define VIA_FIRMWARE_VERSION 6
 // Legacy VIA data occupies the first 4 KiB; editor profiles use two verified slots.
 #define WEAR_LEVELING_LOGICAL_SIZE 16384
 #define WEAR_LEVELING_BACKING_SIZE 32768

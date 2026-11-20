@@ -6,13 +6,19 @@ from datetime import datetime
 import json
 from pathlib import Path
 import queue
+from time import monotonic
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog, colorchooser
 
+from assignment_panel import AssignmentPanel
+from bindings import (
+    DISPLAY_ACTIONS, SLOTS, action_name, change_key_mode, layer_choices,
+    requires_device_actions, set_key_action,
+)
 from profile import (
     ROOT, USER_DATA, BASIC_CODES, MAX_LAYERS, MAX_SNIPPETS, MACRO_POOL_SIZE, MATRIX,
     MODES, EFFECTS, SLIDER_MODES, atomic_json, compile_snippet, decode_profile,
-    default_profile, encode_profile, key_config, label_for_code, layer_config,
+    default_profile, encode_lighting, encode_profile, key_config, label_for_code, layer_config,
 )
 from screen_editor import ScreenEditor
 from led_layout import (LED_COUNT, MAIN_COUNT, LED_LAYOUT_PATH, default_positions,
@@ -37,6 +43,7 @@ class Editor:
         self.generation = None
         self.detection = None
         self.has_detection = False
+        self.next_connection_check = 0
         self.closing = False
         self.progress = queue.SimpleQueue()
         self.history, self.future = [], []
@@ -47,6 +54,8 @@ class Editor:
         self.on_device = None
         self.active_profile = None
         self.preview_phase = 0
+        self.preview_sent = None
+        self.preview_renew_at = 0
         self.led_selected = None
         self.led_drag_start = None
         self.led_drag_changed = False
@@ -99,6 +108,8 @@ class Editor:
         self.snippet_page = tk.Frame(self.notebook, bg=BG)
         self.detect_page = tk.Frame(self.notebook, bg=BG)
         self.notebook.add(self.key_page, text="Tasten & Regler")
+        self.layer_entries = AssignmentPanel(self.notebook, self)
+        self.notebook.add(self.layer_entries, text="Layer-Zugänge")
         self.notebook.add(self.light_page, text="Beleuchtung")
         self.notebook.add(self.snippet_page, text="Snippet-Bibliothek")
         self.screen_page = ScreenEditor(self.notebook, self)
@@ -114,7 +125,6 @@ class Editor:
         self.refresh()
         window.protocol("WM_DELETE_WINDOW", self.close)
         window.after(100, self.tick)
-        window.after(180, self.connect)
 
     @property
     def current_layer(self):
@@ -152,6 +162,10 @@ class Editor:
                     self.device = None
                     self.has_detection = False
                     self.detection = None
+                    self.preview_sent = None
+                    self.key_live.set("Regler GP28 · USB-Verbindung getrennt")
+                    self.detect_text.set("USB-Verbindung getrennt · Das Pad wird erneut gesucht.")
+                    self.next_connection_check = monotonic() + 2
                 if isinstance(error, UnsupportedCommand) and polling:
                     self.has_detection = False
                 if not polling and hasattr(self, "tester_page"):
@@ -165,25 +179,62 @@ class Editor:
                     self.status.set(str(error))
                     messagebox.showerror("OmniPad", str(error), parent=self.window)
             self.refresh_buttons()
-        if not self.closing and self.device and self.has_detection and not self.polling and not self.busy():
-            pad = self.device
-            testing = self.tester_page.active
-
-            def read_signals():
-                detection = pad.detection()
-                return detection, pad.tester_report() if testing else None
-
-            self.submit(read_signals, self.receive_signals, polling=True)
+        if not self.closing and not self.polling and not self.busy():
+            if self.device:
+                self.poll_device()
+            elif monotonic() >= self.next_connection_check:
+                self.connect(automatic=True)
         if not self.closing or self.tasks:
             self.window.after(100, self.tick)
 
-    def receive_signals(self, result):
-        detection, report = result
-        self.detected(detection)
-        if report is not None:
-            self.tester_page.report(detection, report)
+    def poll_device(self):
+        pad = self.device
+        read_detection = self.has_detection
+        read_tester = self.tester_page.active and self.tester_page.native
+        payload = self.lighting_preview_payload()
+        send_preview = payload != self.preview_sent or (
+            payload is not None and monotonic() >= self.preview_renew_at)
+        if not (read_detection or read_tester or send_preview):
+            return
 
-    def connect(self, replace=False):
+        def poll():
+            preview_rejected = False
+            if send_preview:
+                try:
+                    pad.preview_lighting(payload)
+                except UnsupportedCommand:
+                    preview_rejected = True
+            try:
+                detection = pad.detection() if read_detection else None
+            except UnsupportedCommand:
+                detection = None
+            report = pad.tester_report() if read_tester else None
+            return detection, report, preview_rejected
+
+        def ready(result):
+            if self.device is not pad:
+                return
+            detection, report, preview_rejected = result
+            if preview_rejected:
+                self.preview_sent = None
+                if detection is None or not detection.enabled:
+                    self.capabilities["light_preview"] = False
+                    self.status.set("Das Pad hat die Hardwarevorschau abgelehnt")
+            elif send_preview:
+                self.preview_sent = payload
+                self.preview_renew_at = monotonic() + 0.5
+            self.has_detection &= detection is not None
+            if detection is not None:
+                previous = self.detection
+                self.detected(detection)
+                if self.tester_page.active and not self.tester_page.native:
+                    self.tester_page.report_detection(previous, detection)
+            if report is not None and self.tester_page.active:
+                self.tester_page.report(detection, report)
+
+        self.submit(poll, ready, polling=True)
+
+    def connect(self, replace=False, *, automatic=False):
         if self.busy():
             return
         if replace and self.dirty() and not messagebox.askyesno(
@@ -191,55 +242,100 @@ class Editor:
                 parent=self.window):
             return
         previous = self.device
-        was_testing = self.tester_page.active
+        was_diagnosing = self.tester_page.active or (self.detection and self.detection.enabled)
+        was_previewing = self.preview_sent is not None
         self.tester_page.active = False
         self.device = None
         self.has_detection = False
-        self.status.set("USB-Verbindung wird geprüft …")
+        self.detection = None
+        self.preview_sent = None
+        if not automatic or self.next_connection_check == 0:
+            self.status.set("USB-Verbindung wird geprüft …")
+        self.next_connection_check = monotonic() + 2
         metadata = deepcopy(self.profile)
+
         def read():
             if previous:
                 try:
-                    if was_testing:
+                    if was_diagnosing:
                         previous.diagnose(False)
+                    if was_previewing:
+                        previous.preview_lighting(None)
                 except (OSError, RuntimeError):
                     pass
                 finally:
                     previous.close()
-            pad = OmniPad.connect()
             try:
-                caps = pad.capabilities()
-                raw = pad.read_profile() if caps and caps["enabled"] else None
-                snapshot = pad.snapshot()
+                pad = OmniPad.connect()
+            except OSError as error:
+                raise ViaError(f"Die VIA-Schnittstelle konnte nicht geöffnet werden · {error}") from error
+            try:
+                warnings = []
+                try:
+                    caps = pad.capabilities()
+                except UnsupportedCommand:
+                    caps = None
                 try:
                     detection = pad.detection()
                 except UnsupportedCommand:
                     detection = None
-                return pad, caps, raw, snapshot, detection
+                try:
+                    pad.tester_report()
+                except UnsupportedCommand:
+                    native_tester = False
+                else:
+                    native_tester = True
+                raw = None
+                snapshot = None
+                try:
+                    raw = pad.read_profile() if caps and caps["enabled"] else None
+                except ViaError:
+                    warnings.append("Geräteprofil konnte nicht geladen werden")
+                try:
+                    snapshot = pad.snapshot()
+                except ViaError:
+                    warnings.append("VIA-Sicherung konnte nicht gelesen werden")
+                return pad, caps, raw, snapshot, detection, native_tester, warnings
+            except OSError as error:
+                pad.close()
+                raise ViaError(f"Die USB-Verbindung wurde beim Auslesen unterbrochen · {error}") from error
             except Exception:
                 pad.close()
                 raise
         def ready(result):
-            self.device, self.capabilities, raw, snapshot, detection = result
+            self.device, self.capabilities, raw, snapshot, detection, native_tester, warnings = result
+            self.tester_page.native = native_tester
             self.generation = self.capabilities["generation"] if self.capabilities else None
             self.on_device = raw
-            self.active_profile = decode_profile(raw, metadata) if raw else None
-            self.detection = detection
             self.has_detection = detection is not None
-            atomic_json(USER_DATA / "backups" / f"via-{datetime.now():%Y%m%d-%H%M%S}.json", snapshot)
-            if replace or not self.disk_draft:
-                self.profile = deepcopy(self.active_profile) if raw else default_profile(snapshot)
+            self.active_profile = None
+            if raw:
+                try:
+                    self.active_profile = decode_profile(raw, metadata)
+                except (ValueError, KeyError, TypeError):
+                    warnings.append("Geräteprofil konnte nicht ausgewertet werden")
+            if snapshot is not None:
+                try:
+                    atomic_json(USER_DATA / "backups" / f"via-{datetime.now():%Y%m%d-%H%M%S}.json", snapshot)
+                except OSError:
+                    warnings.append("VIA-Sicherung konnte nicht gespeichert werden")
+            if (replace or not self.disk_draft) and (self.active_profile or snapshot is not None):
+                self.profile = deepcopy(self.active_profile) if self.active_profile else default_profile(snapshot)
                 self.disk_draft = True
                 self.history.clear()
                 self.future.clear()
                 self.save_draft()
             self.layer = min(self.layer, len(self.profile["layers"]) - 1)
-            version = f"Firmware {self.device.firmware}"
+            version = f"Firmware {self.device.firmware}" if self.device.firmware else "Firmwareversion unbekannt"
             message = f"USB verbunden · {version} · {len(self.profile['layers'])} eingerichtete Layer"
             if not self.capabilities:
                 message += " · Erweiterte Funktionen benötigen die neue Firmware"
-            self.status.set(message)
+            self.status.set(" · ".join((message, *warnings)))
             self.refresh()
+            if detection is not None:
+                self.detected(detection)
+            else:
+                self.detect_text.set("Diese Firmware liefert keine Live-Eingangsdaten für den Inspektor.")
         self.submit(read, ready)
 
     def change(self, mutator):
@@ -306,13 +402,17 @@ class Editor:
         self.write_button.configure(state="normal" if self.device and not self.busy() and not testing else "disabled")
         if hasattr(self, "tester_page"):
             self.tester_page.refresh()
+        if hasattr(self, "light_live_status"):
+            self.refresh_light_live_status()
 
     def refresh(self):
         if not hasattr(self, "key_canvas"):
             return
         self.refresh_layers()
         self.refresh_key_form()
+        self.refresh_key_shortcuts()
         self.refresh_actions()
+        self.layer_entries.refresh()
         self.draw_keys()
         self.refresh_light_form()
         self.refresh_snippets()
@@ -345,6 +445,7 @@ class Editor:
         self.layer = index
         self.refresh_layers()
         self.refresh_key_form()
+        self.refresh_key_shortcuts()
         self.draw_keys()
         self.refresh_light_form()
         self.refresh_actions()
@@ -396,14 +497,25 @@ class Editor:
         self.key_live = tk.StringVar(value="Regler GP28 · Live-Wert erscheint nach Verbindung mit der neuen Firmware")
         label(left, textvariable=self.key_live, color=MUTED, wraplength=660).pack(
             fill="x", padx=18, pady=(0, 14))
+        self.key_shortcuts = tk.Frame(left, bg=PANEL)
+        self.key_shortcuts.pack(fill="x", padx=14, pady=(0, 12))
         side = ttk.Notebook(workspace, width=320)
         side.pack(side="right", fill="y", padx=(12, 0))
         palette = tk.Frame(side, bg=PANEL)
         self.key_settings = ScrollPanel(side, 320)
         side.add(palette, text="Aktionen")
-        side.add(self.key_settings, text="Taste / Regler")
+        side.add(self.key_settings, text="Details")
+        self.key_palette = palette
         self.key_side = side
-        label(palette, "Suchen und auf eine Taste ziehen", 10, color=MUTED).pack(anchor="w", padx=10, pady=10)
+        self.action_target = tk.StringVar()
+        label(palette, textvariable=self.action_target, size=10, color=MUTED, wraplength=278).pack(
+            fill="x", padx=10, pady=10)
+        self.category = ttk.Combobox(palette, state="readonly",
+                                     values=("Alle Aktionen", "Tasten", "Shortcuts & Medien",
+                                             "Layer", "Display & Gerät", "Snippets"))
+        self.category.current(0)
+        self.category.pack(fill="x", padx=10, pady=(0, 4))
+        self.category.bind("<<ComboboxSelected>>", lambda _: self.refresh_actions())
         self.search = tk.StringVar()
         search = ttk.Entry(palette, textvariable=self.search)
         search.pack(fill="x", padx=10, pady=(0, 4))
@@ -412,8 +524,67 @@ class Editor:
         self.actions = tk.Listbox(palette, height=7, bg=KEY, fg=TEXT, selectbackground="#73503d",
                                    exportselection=False, relief="flat", highlightthickness=0)
         self.actions.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        self.actions.bind("<Double-Button-1>", lambda _: self.choose_action())
-        self.actions.bind("<ButtonRelease-1>", self.drop_action)
+        self.actions.bind("<Return>", lambda _: self.choose_action())
+        self.actions.bind("<ButtonRelease-1>", self.click_action)
+
+    def refresh_key_shortcuts(self):
+        for widget in self.key_shortcuts.winfo_children():
+            widget.destroy()
+        kind, index = self.target
+        if kind != "key":
+            title = "Schieberegler" if kind == "slider" else ("Encoder links", "Encoder rechts")[index]
+            label(self.key_shortcuts, title, size=12).pack(side="left")
+            button(self.key_shortcuts, "Details", lambda: self.key_side.select(self.key_settings)).pack(side="right")
+            self.refresh_action_target()
+            return
+
+        key = self.current_layer["keys"][index]
+        mode = key["mode"]
+        self.action_slot = min(self.action_slot, len(SLOTS[mode]) - 1)
+        bar = tk.Frame(self.key_shortcuts, bg=PANEL)
+        bar.pack(fill="x", pady=(0, 5))
+        label(bar, self.key_name(index), size=12).pack(side="left", padx=(0, 12))
+        for value, title in enumerate(("Direkt", "Multi-Push / Tap Dance", "Durchschalten")):
+            control = button(bar, title, lambda m=value: self.select_key_mode(m))
+            control.pack(side="left", padx=(0, 4))
+            if value == mode:
+                control.state(("disabled",))
+        button(bar, "Details", lambda: self.key_side.select(self.key_settings)).pack(side="right")
+        slots = tk.Frame(self.key_shortcuts, bg=PANEL)
+        slots.pack(fill="x")
+        for slot, name in enumerate(SLOTS[mode]):
+            action = action_name(self.profile, key["codes"][slot])
+            control = tk.Button(slots, text=f"{name}\n{action}", wraplength=105, height=3,
+                                bg=ACCENT if slot == self.action_slot else KEY,
+                                fg=BG if slot == self.action_slot else TEXT, relief="flat",
+                                command=lambda i=slot: self.select_action_slot(i))
+            control.pack(side="left", fill="x", expand=True, padx=(0, 3))
+        self.refresh_action_target()
+
+    def select_key_mode(self, mode):
+        index = self.target[1]
+        self.action_slot = 0
+        self.change(lambda p: change_key_mode(p["layers"][self.layer]["keys"][index], index, mode))
+        self.key_side.select(self.key_palette)
+
+    def select_action_slot(self, slot):
+        self.action_slot = slot
+        self.refresh_key_shortcuts()
+        self.key_side.select(self.key_palette)
+
+    def refresh_action_target(self):
+        kind, index = self.target
+        if kind == "key":
+            key = self.current_layer["keys"][index]
+            caption = f"{self.key_name(index)} · {SLOTS[key['mode']][self.action_slot]}"
+            prior = action_name(self.profile, key["codes"][self.action_slot])
+        elif kind == "encoder":
+            caption = ("Encoder links", "Encoder rechts")[index]
+            prior = action_name(self.profile, self.current_layer["encoders"][index])
+        else:
+            self.action_target.set("Die Regler-Belegung steht unter Details.")
+            return
+        self.action_target.set(f"{caption}\nAktuell · {prior}\nKlick auf eine Aktion zum Belegen.")
 
     def refresh_key_form(self):
         self.key_settings.clear()
@@ -423,20 +594,13 @@ class Editor:
             key = self.current_layer["keys"][index]
             form.title(self.key_name(index))
             form.entry("label", "Displaytext", key["label"])
-            form.choice("mode", "Verhalten", key["mode"], MODES)
-            form.entry("term", "Tap-Dance-Zeitfenster in ms", key["term"], kind=int)
-            names = ["Einzeltipp", "Doppeltipp", "Dreifachtipp", "Vierfachtipp", "Halten"]
-            if key["mode"] == 2:
-                names = ["Schritt 1", "Schritt 2", "Schritt 3", "Schritt 4", "Halten (bei Tap Dance)"]
-            self.action_destination = form.choice("destination", "Ziel für die Aktionsauswahl", self.action_slot, names)
-            self.action_destination.trace_add("write", lambda *_: self.set_action_slot(names))
-            for number, name in enumerate(names):
-                form.entry(f"code{number}", f"{name} · {label_for_code(key['codes'][number])}",
+            if key["mode"] == 1:
+                form.entry("term", "Zeitfenster für Tipps und Halten (ms)", key["term"], kind=int)
+            for number, name in enumerate(SLOTS[key["mode"]]):
+                form.entry(f"code{number}", f"{name} · {action_name(self.profile, key['codes'][number])}",
                            f"0x{key['codes'][number]:04X}", kind="code")
-            form.note("Direkt reagiert beim Drücken. Tap Dance wartet auf weitere Tipps. "
-                      "Durchschalten wählt bei jedem Druck die nächste der vier Aktionen.")
             if index == 11:
-                form.note("Ohne Aktion steuert K0 das Modul wie bisher. Zwei Sekunden halten öffnet immer das Modulmenü.")
+                form.note("Die Standardgesten von K0 stehen im Display-Studio unter Tasten & Auslöser.")
         elif kind == "encoder":
             form.title("Encoder links" if index == 0 else "Encoder rechts")
             form.entry("code", "Aktion", f"0x{self.current_layer['encoders'][index]:04X}", kind="code")
@@ -462,16 +626,17 @@ class Editor:
             button(form.parent, "Live-Wert als Maximum", lambda: self.calibrate("max")).pack(fill="x", padx=14, pady=3)
         form.apply(self.apply_key_form)
 
-    def set_action_slot(self, choices):
-        self.action_slot = choices.index(self.action_destination.get())
-
     def apply_key_form(self):
         try:
             values = self.key_form.values()
             kind, index = self.target
             if kind == "key":
-                key = {"label": values["label"], "mode": values["mode"], "term": values["term"],
-                       "codes": [values[f"code{n}"] for n in range(5)]}
+                key = deepcopy(self.current_layer["keys"][index])
+                key["label"] = values["label"]
+                if "term" in values:
+                    key["term"] = values["term"]
+                for number in range(len(SLOTS[key["mode"]])):
+                    key["codes"][number] = values[f"code{number}"]
                 self.change(lambda p: p["layers"][self.layer]["keys"].__setitem__(index, key))
             elif kind == "encoder":
                 self.change(lambda p: p["layers"][self.layer]["encoders"].__setitem__(index, values["code"]))
@@ -502,12 +667,12 @@ class Editor:
             x, y = 20 + key["x"] * step, 24 + key["y"] * 79
             self.draw_key(("key", index), x, y, key.get("w", 1) * step - 8,
                           key.get("h", 1) * 79 - 8, self.key_name(index),
-                          self.current_layer["keys"][index]["label"], index)
+                          self.key_caption(index), index)
         x = 20 + 4 * step + 12
         for index, title in ((11, "K0"), (10, "Druck")):
             y = 24 if index == 11 else 83
             self.draw_key(("key", index), x, y, 98, 51, title,
-                          self.current_layer["keys"][index]["label"], index)
+                          self.key_caption(index), index)
         for direction, title in enumerate(("↶ Links", "↷ Rechts")):
             self.draw_key(("encoder", direction), x, 142 + direction * 59, 98, 51,
                           title, label_for_code(self.current_layer["encoders"][direction]))
@@ -518,6 +683,13 @@ class Editor:
             value = self.detection.slider_percent
             canvas.create_rectangle(30, slider_y + 45, 30 + (width - 68) * value / 100,
                                      slider_y + 49, fill=ACCENT, outline="")
+
+    def key_caption(self, index):
+        key = self.current_layer["keys"][index]
+        if key["mode"]:
+            assigned = sum(code > 1 for code in key["codes"][:len(SLOTS[key["mode"]])])
+            return f"{MODES[key['mode']]} · {assigned} Aktionen"
+        return key["label"] or action_name(self.profile, key["codes"][0])
 
     def draw_key(self, target, x, y, width, height, title, detail, physical=None):
         down = physical is not None and self.detection and self.detection.mask & (1 << physical)
@@ -539,8 +711,11 @@ class Editor:
         self.target = target
         self.action_slot = 0
         self.refresh_key_form()
+        self.refresh_key_shortcuts()
         if target[0] == "slider":
             self.key_side.select(self.key_settings)
+        else:
+            self.key_side.select(self.key_palette)
         self.draw_keys()
 
     def select_at(self, event):
@@ -557,6 +732,8 @@ class Editor:
         if target[0] == "key":
             menu.add_command(label="Displaytext bearbeiten", command=self.focus_label)
             menu.add_command(label="Im Display-Studio anzeigen", command=self.display_key)
+            menu.add_command(label="Display-Auslöser zuordnen", command=self.display_trigger)
+            menu.add_command(label="Layer-Zugang zuordnen", command=self.layer_trigger)
             menu.add_command(label="Belegung kopieren", command=lambda: self.copy_key())
             if self.clipboard:
                 menu.add_command(label="Belegung einfügen", command=self.paste_key)
@@ -586,43 +763,64 @@ class Editor:
 
     def display_key(self):
         self.notebook.select(self.screen_page)
+        self.screen_page.pages.select(0)
         self.screen_page.add(1, binding=2, key=self.target[1])
+
+    def display_trigger(self):
+        self.notebook.select(self.screen_page)
+        panel = self.screen_page.assignments
+        self.screen_page.pages.select(panel)
+        key = self.current_layer["keys"][self.target[1]]
+        panel.set_selection(self.layer, self.target[1], key["mode"], self.action_slot)
+
+    def layer_trigger(self):
+        self.notebook.select(self.layer_entries)
+        key = self.current_layer["keys"][self.target[1]]
+        self.layer_entries.set_selection(self.layer, self.target[1], key["mode"], self.action_slot)
 
     def refresh_actions(self):
         if not hasattr(self, "actions"):
             return
         query = self.search.get().casefold()
-        entries = list(BASIC_CODES.items())
-        for index, layer in enumerate(self.profile["layers"]):
-            entries.extend([(f"Layer {index + 1} · {layer['name']} wechseln", 0x5200 + index),
-                            (f"Layer {index + 1} · {layer['name']} halten", 0x5220 + index),
-                            (f"Layer {index + 1} · {layer['name']} umschalten", 0x5260 + index)])
-        entries.extend((f"Snippet · {item['name']}", 0x7700 + index) for index, item in enumerate(self.profile["snippets"]))
-        self.action_entries = [(name, code) for name, code in entries if query in name.casefold() or query in f"0x{code:04x}"]
+        keys = [(name, code) for name, code in BASIC_CODES.items() if code < 0xA0 or 224 <= code <= 231]
+        shortcuts = [(name, code) for name, code in BASIC_CODES.items() if code >= 0xA0 and not 224 <= code <= 231]
+        categories = [
+            keys, shortcuts, [(name, code) for code, name in layer_choices(self.profile)],
+            [(name, code) for code, name in DISPLAY_ACTIONS.items()],
+            [(f"Snippet · {item['name']}", 0x7700 + i) for i, item in enumerate(self.profile["snippets"])],
+        ]
+        category = self.category.current()
+        entries = categories[category - 1] if category > 0 else [item for items in categories for item in items]
+        matching = [(name, code) for name, code in entries if query in name.casefold() or query in f"0x{code:04x}"]
+        if matching == getattr(self, "action_entries", None):
+            return
+        self.action_entries = matching
         self.actions.delete(0, "end")
         for name, code in self.action_entries:
-            self.actions.insert("end", f"{name}   ·   0x{code:04X}")
+            self.actions.insert("end", name)
 
-    def choose_action(self, target=None):
-        selected = self.actions.curselection()
-        if not selected:
-            return
-        code = self.action_entries[selected[0]][1]
-        kind, index = target or self.target
+    def choose_action(self, row=None):
+        if row is None:
+            selected = self.actions.curselection()
+            if not selected:
+                return
+            row = selected[0]
+        code = self.action_entries[row][1]
+        kind, index = self.target
         if kind == "key":
             slot = self.action_slot
-            self.change(lambda p: p["layers"][self.layer]["keys"][index]["codes"].__setitem__(slot, code))
+            mode = self.current_layer["keys"][index]["mode"]
+            self.change(lambda p: set_key_action(p["layers"][self.layer]["keys"][index], index, mode, slot, code))
         elif kind == "encoder":
             self.change(lambda p: p["layers"][self.layer]["encoders"].__setitem__(index, code))
         else:
             self.status.set("Die Regleraktionen werden rechts im Regler-Menü eingestellt.")
 
-    def drop_action(self, event):
-        x, y = event.x_root - self.key_canvas.winfo_rootx(), event.y_root - self.key_canvas.winfo_rooty()
-        target = self.target_at(x, y)
-        if target:
-            self.target = target
-            self.choose_action(target)
+    def click_action(self, event):
+        row = self.actions.nearest(event.y)
+        bounds = self.actions.bbox(row) if self.action_entries else None
+        if bounds and bounds[1] <= event.y < bounds[1] + bounds[3]:
+            self.choose_action(row)
 
     def create_lighting(self):
         left = tk.Frame(self.light_page, bg=PANEL)
@@ -658,6 +856,8 @@ class Editor:
             self.led_status.set("LED-Layout ungültig – Standardpositionen geladen")
         self.light_settings = ScrollPanel(self.light_page, 320)
         self.light_settings.pack(side="right", fill="y", padx=(12, 0), pady=(8, 0))
+        self.light_live = tk.BooleanVar(value=True)
+        self.light_live_status = tk.StringVar()
         self.zone = 0
         self.window.after(80, self.animate_lights)
 
@@ -665,6 +865,10 @@ class Editor:
         self.light_settings.clear()
         form = self.light_form = Form(self.light_settings.content)
         form.title("Beleuchtung pro Layer")
+        ttk.Checkbutton(form.parent, text="Live am Pad", variable=self.light_live,
+                        command=self.refresh_light_live_status).pack(anchor="w", padx=14)
+        label(form.parent, textvariable=self.light_live_status, size=9, color=MUTED,
+              wraplength=270).pack(anchor="w", padx=14, pady=(4, 8))
         chosen = form.choice("zone", "LED-Gruppe", self.zone, ["Main · 14 LEDs", "Frame · 43 LEDs"])
         chosen.trace_add("write", lambda *_: self.select_zone(chosen))
         zone = self.current_layer["lighting"][self.zone]
@@ -689,11 +893,47 @@ class Editor:
         self.zone = 0 if variable.get().startswith("Main") else 1
         self.refresh_light_form()
 
+    def lighting_form_values(self):
+        values = self.light_form.values()
+        values.pop("zone")
+        values["triggers"] = sum(bit for bit in (1, 2, 4, 8) if values.pop(f"trigger{bit}"))
+        return values
+
+    def lighting_preview_zones(self):
+        saved = self.current_layer["lighting"]
+        try:
+            zones = list(saved)
+            zones[self.zone] = self.lighting_form_values()
+            return zones, encode_lighting(zones)
+        except ValueError:
+            # A number can be temporarily empty or out of range while typing.
+            return saved, encode_lighting(saved)
+
+    def refresh_light_live_status(self):
+        if not self.device:
+            text = "Livevorschau wartet auf USB"
+        elif not (self.capabilities and self.capabilities["light_preview"]):
+            text = "Livevorschau am Pad benötigt Firmware 6"
+        elif self.tester_page.active or (self.detection and self.detection.enabled):
+            text = "Livevorschau pausiert während des Tests"
+        elif self.light_live.get():
+            text = "Änderungen sofort sichtbar · Übernehmen behält sie im Entwurf"
+        else:
+            text = "Livevorschau am Pad ausgeschaltet"
+        if self.light_live_status.get() != text:
+            self.light_live_status.set(text)
+
+    def lighting_preview_payload(self):
+        if (not self.capabilities or not self.capabilities["light_preview"] or not self.light_live.get()
+                or self.tester_page.active or self.tester_page.pending
+                or (self.detection and self.detection.enabled)
+                or self.notebook.select() != str(self.light_page)):
+            return None
+        return self.lighting_preview_zones()[1]
+
     def apply_lighting(self):
         try:
-            values = self.light_form.values()
-            values.pop("zone")
-            values["triggers"] = sum(bit for bit in (1, 2, 4, 8) if values.pop(f"trigger{bit}"))
+            values = self.lighting_form_values()
             self.change(lambda p: p["layers"][self.layer]["lighting"][self.zone].update(values))
         except ValueError as error:
             messagebox.showerror("Beleuchtung", str(error), parent=self.window)
@@ -836,17 +1076,18 @@ class Editor:
         left, top, right, bottom = square_bounds(width, height)
         canvas.create_rectangle(left, top, right, bottom,
                                 fill="#192028", outline="#3c4855", width=2)
+        zones, _ = self.lighting_preview_zones()
         for zone_index, count in ((0, 14), (1, 43)):
-            zone = self.current_layer["lighting"][zone_index]
+            zone = zones[zone_index]
             for index in range(count):
                 phase = self.preview_phase * (zone["speed"] + 16) / 200
                 position = count - 1 - index if zone["reverse"] else index
                 blend, level = 0, zone["brightness"] / 64
                 effect = zone["effect"]
                 if effect == 1:
-                    blend = index % 2
+                    blend = position % 2
                 elif effect == 2:
-                    blend = int(index >= count // 2)
+                    blend = int(position >= count // 2)
                 elif effect == 3:
                     blend = position / (count - 1)
                 elif effect == 4:
@@ -1064,6 +1305,11 @@ class Editor:
                                 "Dein Entwurf ist lokal gespeichert und kann als Profil exportiert werden.",
                                 parent=self.window)
             return
+        if requires_device_actions(self.profile) and not self.capabilities.get("device_actions"):
+            messagebox.showinfo("Firmware aktualisieren",
+                                "Dieses Profil verwendet Display-/Geräteaktionen. Bitte die UF2 mit Belegungseditor flashen.",
+                                parent=self.window)
+            return
         payload = encode_profile(self.profile)
         captured = deepcopy(self.profile)
         generation = self.generation
@@ -1129,6 +1375,8 @@ class Editor:
             try:
                 if self.capabilities and (self.tester_page.active or (self.detection and self.detection.enabled)):
                     self.device.diagnose(False)
+                if self.preview_sent is not None:
+                    self.device.preview_lighting(None)
             except (OSError, RuntimeError):
                 pass
             self.device.close()

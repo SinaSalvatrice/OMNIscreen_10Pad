@@ -1,13 +1,29 @@
-// Transactional VIA extension on custom channel 0, IDs 0x71..0x78.
+// Transactional VIA extension on custom channel 0, IDs 0x71..0x79.
 #pragma once
 #include "via.h"
 
 static bool omp_command(uint8_t *data, uint8_t length) {
     if (length != 32 || data[1] != 0 ||
         (data[0] != id_custom_get_value && data[0] != id_custom_set_value) ||
-        data[2] < 0x71 || data[2] > 0x78) return false;
+        data[2] < 0x71 || data[2] > 0x79) return false;
     const bool get = data[0] == id_custom_get_value;
     const uint8_t id = data[2];
+    if (id == 0x79 && !get) {
+        if (data[3] == 0) {
+            omp_preview_active = false;
+            return true;
+        }
+        if (data[3] == 1 && !cc_matrix_test_view) {
+            omp_zone_t zones[2];
+            memcpy(zones, &data[4], sizeof(zones));
+            if (omp_zone_valid(&zones[0]) && omp_zone_valid(&zones[1])) {
+                memcpy(omp_preview_zones, zones, sizeof(zones));
+                omp_preview_at = timer_read();
+                omp_preview_active = true;
+                return true;
+            }
+        }
+    }
     if (id == 0x77 && get) return cc_tester_report(data);
     if (id == 0x78 && !get && cc_tester_active && cc_matrix_test_view && data[3] <= 3) {
         if (cc_tester_output == 1) cc_matrix_full_redraw = true;
@@ -17,6 +33,7 @@ static bool omp_command(uint8_t *data, uint8_t length) {
         return true;
     }
     if (id == 0x76 && !get && data[3] <= 2) {
+        omp_preview_active = false;
         omp_release_all();
         clear_keyboard();
         cc_tester_active = data[3] == 2;
@@ -39,6 +56,7 @@ static bool omp_command(uint8_t *data, uint8_t length) {
         data[10] = sizeof(omp_profile) >> 8;
         memcpy(&data[11], &omp_generation, 4);
         data[15] = CC_PCF8575_MATRIX;
+        data[16] = 3; // RAM-only live LED preview and assignable device actions.
         return true;
     }
     if (id == 0x72 && get && omp_enabled) {
@@ -78,6 +96,8 @@ static bool omp_command(uint8_t *data, uint8_t length) {
             omp_checksum(&omp_incoming, sizeof(omp_incoming)) == omp_expected_checksum) {
             omp_release_all();
             if (omp_store()) {
+                cc_screen_selection = CC_SCREEN_AUTO;
+                omp_screen_invalid = true;
                 cc_activate_layer(omp_profile.default_layer);
                 omp_layer_changed();
                 cc_dirty = true;
