@@ -7,6 +7,7 @@ Der Starter richtet die USB-Bibliothek in einer eigenen Python-Umgebung ein.
 ## Bedienung
 
 - Über den Layer-Reiter den Bearbeitungslayer wählen. Die Markierung mit Punkt zeigt den am Pad aktiven Layer.
+- Gedrückte Tasten leuchten in der Layeransicht auch im Normalbetrieb grün auf, unabhängig von ihrer Belegung.
 - Aktionen rechts suchen und auf eine Taste ziehen. Unter **Taste / Regler** die Details bearbeiten und **Übernehmen** drücken.
 - Pro Taste stehen **Direkt**, **Tap Dance** mit bis zu vier Tipps und Halten sowie **Durchschalten** mit vier Aktionen bereit.
 - Rechtsklick auf eine Taste öffnet Displaytext, Kopieren, Einfügen und die Verknüpfung zum Display-Studio.
