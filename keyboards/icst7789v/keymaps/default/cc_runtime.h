@@ -31,7 +31,7 @@ static cc_screen_selection_t cc_screen_selection;
 static bool cc_eeprom_confirm;
 static bool cc_eeprom_confirm_visible;
 static uint16_t cc_eeprom_confirm_at;
-// Physical ADC count (0..1023) and calibrated position.
+// Stabilized ADC count (0..1023) and calibrated position.
 static uint16_t cc_slider_raw = 0;
 static uint16_t cc_slider_pct = 0;
 static uint16_t cc_slider_last_sample = 0;
