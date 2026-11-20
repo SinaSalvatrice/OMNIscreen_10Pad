@@ -6,7 +6,7 @@ if not exist "%EDITOR_VENV%\Scripts\python.exe" (
 )
 "%EDITOR_VENV%\Scripts\python.exe" -c "import hid" >nul 2>&1
 if errorlevel 1 "%EDITOR_VENV%\Scripts\python.exe" -m pip install -r "%~dp0requirements.txt" || goto failed
-start "" "%EDITOR_VENV%\Scripts\pythonw.exe" "%~dp0app.py"
+start "" "%EDITOR_VENV%\Scripts\pythonw.exe" "%~dp0start_editor.pyw" || goto failed
 exit /b 0
 :failed
 echo Der OmniPad-Editor konnte nicht gestartet werden.
