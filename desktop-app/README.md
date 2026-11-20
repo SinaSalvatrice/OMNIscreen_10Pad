@@ -8,8 +8,9 @@ Der Starter richtet die USB-Bibliothek in einer eigenen Python-Umgebung ein.
 
 - Über den Layer-Reiter den Bearbeitungslayer wählen. Die Markierung mit Punkt zeigt den am Pad aktiven Layer.
 - Gedrückte Tasten leuchten in der Layeransicht auch im Normalbetrieb grün auf, unabhängig von ihrer Belegung.
-- Aktionen rechts suchen und auf eine Taste ziehen. Unter **Taste / Regler** die Details bearbeiten und **Übernehmen** drücken.
-- Pro Taste stehen **Direkt**, **Tap Dance** mit bis zu vier Tipps und Halten sowie **Durchschalten** mit vier Aktionen bereit.
+- In der Layeransicht eine Taste und rechts die gewünschte Aktion anklicken. Die Aktionsliste lässt sich nach Kategorie und Suchtext filtern.
+- Unter dem Pad zwischen **Direkt**, **Multi-Push / Tap Dance** und **Durchschalten** wählen. Die belegten und freien Slots stehen direkt daneben. Einen Slot anklicken und anschließend seine Aktion wählen. **Details** enthält Displaytext, Zeitfenster und manuelle Keycodes.
+- **Layer-Zugänge** zeigt alle aktiven Wechsel, Umschalter und Haltebelegungen mit Quelllayer, Taste oder Regler, Geste und Ziel. Zum Ändern eines Tastenzugangs die Zeile anklicken. **Aktuell** zeigt die Aktion, die durch die neue Zuordnung ersetzt wird.
 - Rechtsklick auf eine Taste öffnet Displaytext, Kopieren, Einfügen und die Verknüpfung zum Display-Studio.
 - Rechtsklick auf einen Layer öffnet Name, Farbmarkierung, Duplizieren und Startlayer. **+ Layer** fügt einen Layer hinzu.
 - Der Schieberegler an **GPIO28 / ADC2** erhält seine eigene Belegung pro Layer. Er kann Auf-/Abwärtsaktionen oder Main-/Frame-Helligkeit steuern. Minimum, Maximum, Schrittweite, Totzone und Richtung sind einstellbar. Firmwareversion 5 dreht die Grundrichtung um. Die Option „Richtung umkehren“ bleibt als Override pro Layer verfügbar.
@@ -20,7 +21,7 @@ Der Starter richtet die USB-Bibliothek in einer eigenen Python-Umgebung ein.
 - Die Editor-Anordnung wird sofort nach dem Loslassen lokal in `desktop-app/user-data/led-layout.json` gespeichert und gilt für alle Layer. **Anordnung laden**, **Speichern unter**, **Rückgängig** und **Zurücksetzen** stehen direkt unter der Vorschau. Import/Export verwenden `omnipad-led-layout` v1 mit 57 festen X/Y-Positionen (0–1). Diese Koordinaten sind reine **Editor-Metadaten**, keine firmwareseitige LED-Neuzuordnung und werden **nicht** aufs Pad geflasht. Für die Sicherung auf einem zweiten PC `Speichern unter` verwenden.
 
 - **Snippet-Bibliothek** verwaltet Text, Tasten, gedrückte/gehaltene Tasten und Pausen. Der Schritt-Editor akzeptiert Aktionsnamen wie `tap Kopieren` und `down Strg` sowie Hex-Keycodes. Texte werden für deutsches Tastaturlayout übersetzt.
-- **Display-Studio** erstellt Felder, Texte und Icons auf 320 × 240 Pixeln. Ziehen verschiebt, der Eckgriff ändert die Größe. Datenquellen und Sichtbarkeitsregeln lassen sich rechts einstellen. Der Export verwendet `.screen.json`.
+- **Display-Studio** erstellt Felder, Texte und Icons auf 320 × 240 Pixeln. Ziehen verschiebt, der Eckgriff ändert die Größe. Der Reiter **Tasten & Auslöser** ordnet Tasten und Gesten auf dem gewählten Layer den Geräteansichten zu. Er zeigt auch die K0-Standardgesten. Das Displaylayout wird als `.screen.json` exportiert. Die Auslöser gehören zum OmniPad-Profil.
 - **Tester** protokolliert beobachtete Signale mit GPIO oder Anschluss, Funktion und Messwert.
   Unbelegte Matrixpositionen werden als nicht zugeordnet angezeigt.
   Display, Main-LEDs und Frame-LEDs lassen sich separat ausgeben und am Pad per Sichtprüfung beurteilen.
@@ -50,12 +51,15 @@ Reihen GP12/GP13/GP14, Spalten GP15/GP26/GP27/GP0.
 Kein PCF8575, kein ADXL345; der Schieberegler bleibt an GP28.
 
 K0 ohne zugewiesene Aktion bedient das Modul wie bisher.
-K0 zwei Sekunden halten öffnet bei aktivem Editorprofil immer das Modulmenü.
+Die Standardgeste **K0 halten** öffnet das Modulmenü. Im Display-Studio kann die Geste einer anderen Ansicht zugeordnet werden.
 Encoder-Druck beendet den am Pad gestarteten Matrix-Test.
 
 Ab Firmware 6 setzt **Encoder-Taster und K0 gleichzeitig fünf Sekunden halten**
 die QMK-/VIA-Belegung und beide OmniPad-Profilspeicher auf Werkseinstellungen zurück.
 Das Pad startet neu. Vor Ablauf der fünf Sekunden loslassen, um abzubrechen.
+Die zuweisbare Aktion **Clear EEPROM …** öffnet eine Bestätigung auf dem Pad.
+Ein neuer Druck auf den Encoder bestätigt, K0 bricht ab. Display- und Geräteaktionen
+benötigen den Build `OmniPad-V6-GPIO-Belegungseditor.uf2`.
 
 ## Gerätespeicher
 

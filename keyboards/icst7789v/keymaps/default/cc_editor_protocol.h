@@ -56,7 +56,7 @@ static bool omp_command(uint8_t *data, uint8_t length) {
         data[10] = sizeof(omp_profile) >> 8;
         memcpy(&data[11], &omp_generation, 4);
         data[15] = CC_PCF8575_MATRIX;
-        data[16] = 1; // RAM-only live LED preview.
+        data[16] = 3; // RAM-only live LED preview and assignable device actions.
         return true;
     }
     if (id == 0x72 && get && omp_enabled) {
@@ -96,6 +96,8 @@ static bool omp_command(uint8_t *data, uint8_t length) {
             omp_checksum(&omp_incoming, sizeof(omp_incoming)) == omp_expected_checksum) {
             omp_release_all();
             if (omp_store()) {
+                cc_screen_selection = CC_SCREEN_AUTO;
+                omp_screen_invalid = true;
                 cc_activate_layer(omp_profile.default_layer);
                 omp_layer_changed();
                 cc_dirty = true;
