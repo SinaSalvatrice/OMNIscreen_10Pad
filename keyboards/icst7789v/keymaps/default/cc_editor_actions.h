@@ -37,6 +37,16 @@ static uint16_t omp_taps[32];
 static uint8_t omp_tap_head, omp_tap_tail;
 static uint16_t omp_tap_active, omp_tap_timer;
 
+// A synchronous TFT draw can span several taps or extend a short HID pulse.
+static bool omp_display_waits_for_input(void) {
+    if (omp_tap_active || omp_tap_head != omp_tap_tail) return true;
+    for (uint8_t index = 0; index < OMP_KEYS; ++index) {
+        const omp_key_state_t *state = &omp_keys[index];
+        if (state->key.mode == 1 && !state->holding && (state->down || state->taps)) return true;
+    }
+    return false;
+}
+
 static void omp_event(uint8_t trigger) {
     omp_trigger = trigger;
     omp_trigger_at = timer_read();
@@ -91,6 +101,7 @@ static void omp_start_macro(uint8_t index) {
 }
 
 static void omp_tap(uint16_t code) {
+    if (code <= KC_TRNS) return;
     if (code >= QK_MACRO_0 && code <= QK_MACRO_15) {
         omp_start_macro(code - QK_MACRO_0);
         return;

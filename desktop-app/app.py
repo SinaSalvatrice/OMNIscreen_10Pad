@@ -1323,7 +1323,9 @@ class Editor:
             self.on_device = payload
             self.active_profile = captured
             atomic_json(USER_DATA / "last-device.omnipad.json", captured)
-            self.status.set("Profil auf dem Pad gespeichert und vollständig zurückgelesen")
+            start = captured["default_layer"]
+            name = captured["layers"][start]["name"]
+            self.status.set(f"Profil auf dem Pad gespeichert und geprüft · Startlayer {start + 1} {name} aktiviert")
         self.submit(write, saved)
 
     def import_profile(self):

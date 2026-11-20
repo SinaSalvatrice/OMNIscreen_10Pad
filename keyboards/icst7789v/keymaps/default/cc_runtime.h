@@ -172,47 +172,66 @@ static void cc_background(void) {
     cc_draw_text(7, 225, "K0 1X MODE 2X DEFAULT HOLD MENU", 1, 0xD69A);
 }
 
+static void cc_layer_key_tile(uint8_t i, uint8_t selected, const cc_layer_desc_t *desc, uint16_t accent) {
+    // Coordinates come from the physical-key geometry in layer_system.json.
+    // K5 is double-height; K9 is double-width; K10 is bottom-right.
+    const cc_key_shape_t *shape = &cc_key_shapes[i];
+    const uint16_t x = shape->x;
+    const uint16_t y = shape->y;
+    const uint16_t w = shape->w;
+    const uint16_t h = shape->h;
+    // The screen must not pretend that a VIA-edited key still has its preset.
+    const bool fixed_modifier = !omp_enabled && (i == 4 || i == 8 || i == 9);
+    const uint16_t mapped = dynamic_keymap_get_keycode(selected, cc_matrix_row[i], cc_matrix_col[i]);
+    const char *label = (!fixed_modifier && mapped != desc->taps[i]) ? "VIA" : desc->labels[i];
+    if (omp_enabled) label = omp_profile.layers[selected].keys[i].label;
+    const bool highlight = cc_last_key == i;
+    lcd_fill(x, y, w, h, highlight ? 0x3A90 : 0x29E8);
+    lcd_fill(x, y, w, 2, highlight ? accent : 0x426A);
+    cc_draw_text(x + 4, y + 5, "K", 1, 0xAD75);
+    if (i < 9) {
+        char number[2] = {(char)('1' + i), 0};
+        cc_draw_text(x + 10, y + 5, number, 1, 0xAD75);
+    } else {
+        cc_draw_text(x + 10, y + 5, "10", 1, 0xAD75);
+    }
+    // Shorten long layer names inside 43-pixel single-key tiles.
+    char short_label[6] = {0};
+    for (uint8_t j = 0; j < 5 && label[j]; ++j) {
+        short_label[j] = label[j];
+    }
+    cc_draw_text(x + 5, y + (h / 2u), short_label, 1, C_WHITE);
+}
+
+static bool cc_layer_screen_invalid = true;
+
 static void cc_layer_screen(void) {
+    static uint8_t drawn_layer, drawn_active, drawn_key = UINT8_MAX;
+    static bool drawn_display_mode;
+    static uint32_t drawn_generation;
     const uint8_t selected = cc_preview;
     const cc_layer_desc_t *desc = &cc_layers[selected < CC_LAYER_COUNT ? selected : 0];
     const uint16_t accent = omp_enabled ? omp_profile.layers[selected].accent : desc->accent_rgb565;
-    cc_background();
-    lcd_fill(7, 33, 109, 171, 0x2186);
-    lcd_fill(7, 33, 109, 4, accent);
-    cc_draw_icon(selected, accent);
-    cc_draw_text(12, 151, omp_enabled ? omp_profile.layers[selected].name : desc->name, 2, C_WHITE);
-    cc_draw_text(12, 180, "K9 2X CC  K0 2X DEF", 1, accent);
-    cc_draw_text(12, 192, selected == cc_active ? "ACTIVE" : "PREVIEW", 1, C_WHITE);
-    for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
-        // Coordinates come from the physical-key geometry in layer_system.json.
-        // K5 is double-height; K9 is double-width; K10 is bottom-right.
-        const cc_key_shape_t *shape = &cc_key_shapes[i];
-        const uint16_t x = shape->x;
-        const uint16_t y = shape->y;
-        const uint16_t w = shape->w;
-        const uint16_t h = shape->h;
-        // The screen must not pretend that a VIA-edited key still has its preset.
-        const bool fixed_modifier = !omp_enabled && (i == 4 || i == 8 || i == 9);
-        const uint16_t mapped = dynamic_keymap_get_keycode(selected, cc_matrix_row[i], cc_matrix_col[i]);
-        const char *label = (!fixed_modifier && mapped != desc->taps[i]) ? "VIA" : desc->labels[i];
-        if (omp_enabled) label = omp_profile.layers[selected].keys[i].label;
-        const bool highlight = cc_last_key == i;
-        lcd_fill(x, y, w, h, highlight ? 0x3A90 : 0x29E8);
-        lcd_fill(x, y, w, 2, highlight ? accent : 0x426A);
-        cc_draw_text(x + 4, y + 5, "K", 1, 0xAD75);
-        if (i < 9) {
-            char number[2] = {(char)('1' + i), 0};
-            cc_draw_text(x + 10, y + 5, number, 1, 0xAD75);
-        } else {
-            cc_draw_text(x + 10, y + 5, "10", 1, 0xAD75);
-        }
-        // Shorten long layer names inside 43-pixel single-key tiles.
-        char short_label[6] = {0};
-        for (uint8_t j = 0; j < 5 && label[j]; ++j) {
-            short_label[j] = label[j];
-        }
-        cc_draw_text(x + 5, y + (h / 2u), short_label, 1, C_WHITE);
+    if (!omp_enabled || cc_layer_screen_invalid || selected != drawn_layer || cc_active != drawn_active ||
+        cc_display_mode != drawn_display_mode || omp_generation != drawn_generation) {
+        cc_background();
+        lcd_fill(7, 33, 109, 171, 0x2186);
+        lcd_fill(7, 33, 109, 4, accent);
+        cc_draw_icon(selected, accent);
+        cc_draw_text(12, 151, omp_enabled ? omp_profile.layers[selected].name : desc->name, 2, C_WHITE);
+        cc_draw_text(12, 180, "K9 2X CC  K0 2X DEF", 1, accent);
+        cc_draw_text(12, 192, selected == cc_active ? "ACTIVE" : "PREVIEW", 1, C_WHITE);
+        for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) cc_layer_key_tile(i, selected, desc, accent);
+        drawn_layer = selected;
+        drawn_active = cc_active;
+        drawn_display_mode = cc_display_mode;
+        drawn_generation = omp_generation;
+        cc_layer_screen_invalid = false;
+    } else if (cc_last_key != drawn_key) {
+        if (drawn_key < CC_KEY_COUNT) cc_layer_key_tile(drawn_key, selected, desc, accent);
+        if (cc_last_key < CC_KEY_COUNT) cc_layer_key_tile(cc_last_key, selected, desc, accent);
     }
+    drawn_key = cc_last_key;
 }
 
 // Physical matrix test: highlight held switches, count presses and display R/C.
@@ -470,6 +489,8 @@ static bool cc_custom_screen_selected(void) {
 
 static void cc_redraw(void) {
     if (!panel_ready) return;
+    if (cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view || cc_eeprom_confirm ||
+        cc_reset_state == CC_RESET_HOLDING || cc_custom_screen_selected()) cc_layer_screen_invalid = true;
     if (cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view) omp_screen_invalid = true;
     if (cc_reset_state == CC_RESET_HOLDING) {
         omp_screen_invalid = true;
