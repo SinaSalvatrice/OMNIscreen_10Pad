@@ -57,39 +57,15 @@ echo "Installing keyboard definition..."
 rm -rf "keyboards/$KEYBOARD"
 cp -R "$PROJECT_ROOT/keyboards/$KEYBOARD" "keyboards/$KEYBOARD"
 
-# Source keyboard.json contains the PHYSICAL PCF8575 P00..P17 markings.
-# QMK only understands MCU pin names in matrix_pins, so prepare a build-only
-# temporary keyboard.json with nulls and a generated C header with the REAL
-# expander bit positions. The committed JSON is NEVER modified by this step.
-case "${PCF8575_MATRIX:-yes}" in
-    yes)
-        echo "Keyboard JSON: actual PCF8575 pin mapping (custom lite)"
-        if ! command -v python3 >/dev/null 2>&1; then
-            echo "ERROR: Python 3 required to prepare PCF8575 pin mappings" >&2
-            exit 7
-        fi
-        python3 "$PROJECT_ROOT/scripts/prepare_pcf8575_matrix.py" \
-            "$PROJECT_ROOT/keyboards/$KEYBOARD/keyboard.json" \
-            "$QMK_HOME/keyboards/$KEYBOARD/keyboard.json" \
-            "$QMK_HOME/keyboards/$KEYBOARD/pcf8575_matrix_pins.h"
-        ;;
-    no)
-        echo "Keyboard JSON: legacy RP2040 GPIO matrix"
-        cp -f "$PROJECT_ROOT/keyboards/$KEYBOARD/keyboard_gpio.json" \
-              "keyboards/$KEYBOARD/keyboard.json"
-        ;;
-    *)
-        echo "ERROR: PCF8575_MATRIX must be 'yes' or 'no'." >&2
-        exit 6
-        ;;
-esac
+# keyboard.json is the sole matrix definition, using direct RP2040 GPIOs.
+echo "Keyboard JSON: direct GPIO matrix, no I2C expansion"
 
 rm -f "${KEYBOARD}_${KEYMAP}.uf2"
 
 echo "Building $KEYBOARD:$KEYMAP..."
 # SKIP_GIT avoids QMK's normal full recursive submodule scan. The required
 # RP2040 submodules were initialized explicitly above.
-make SKIP_GIT=1 PCF8575_MATRIX="${PCF8575_MATRIX:-yes}" "$KEYBOARD:$KEYMAP"
+make SKIP_GIT=1 "$KEYBOARD:$KEYMAP"
 
 UF2="$QMK_HOME/${KEYBOARD}_${KEYMAP}.uf2"
 if [[ ! -f "$UF2" ]]; then

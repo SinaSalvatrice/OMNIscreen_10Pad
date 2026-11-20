@@ -30,22 +30,10 @@
 
 #define SLIDER_ADC_PIN GP28  // ADC2; slide potentiometer signal
 
-// ADXL345 (0x53) and PCF8575 (0x20) share RP2040 I2C0: SDA GP0, SCL GP1.
-// GPIO matrix remains default for unmodified hardware.
-// Build with PCF8575_MATRIX=yes only AFTER moving all seven matrix wires
-// from RP2040 to PCF8575 as documented in README.
-// PCF8575 is a quasi-bidirectional expander (NOT register-mapped MCP23017).
-#ifndef CC_PCF8575_MATRIX
-#    define CC_PCF8575_MATRIX 0
-#endif
-#define CC_ADXL345_ENABLE CC_PCF8575_MATRIX
-#define I2C_DRIVER I2CD0
-#define I2C1_SDA_PIN GP0
-#define I2C1_SCL_PIN GP1
-#define I2C1_CLOCK_SPEED 100000
-// RP2040 GPIO function 3 is hardware I2C; QMK's generic names are I2C1_*.
-#define I2C1_SDA_PAL_MODE 3
-#define I2C1_SCL_PAL_MODE 3
+// Direct RP2040 GPIO matrix, no I2C expander or accelerometer.
+// GP0 is a matrix column, GP28 remains the slider ADC pin.
+#define CC_PCF8575_MATRIX 0
+#define CC_ADXL345_ENABLE 0
 
 #define TFT_WIDTH 240
 #define TFT_HEIGHT 320

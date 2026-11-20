@@ -141,9 +141,10 @@ The diagnostics firmware still uses normal QMK key scanning. When you attach swi
 | TFT SPI + control | GP2–GP7 | Active |
 | Encoder A/B + PUSH + K0 | GP8–GP11 | Active |
 | Matrix rows (3) | GP12, GP13, GP14 | Reserved/configured |
-| Matrix columns (4) | GP15, GP26, GP27, GP28 | Reserved/configured |
-| Optional external NeoPixel DIN | GP29 | Reserved; disabled in firmware |
-| Spare | GP0, GP1 | Unused |
+| Matrix columns (4) | GP15, GP26, GP27, GP0 | Active |
+| Slide potentiometer ADC2 | GP28 | Active |
+| External NeoPixel DIN | GP29 | 57 LEDs |
+| Spare | GP1 | Unused |
 
 **Matrix diode direction: COL2ROW.** The diode cathode (stripe) faces the row wire. Matrix key positions are 4 + 4 + 3; the last key is wide physically but electrically still a single switch, with [row 2, column 3] unused. This is a provisional electrical layout and can be adapted to the eventual enclosure.
 
