@@ -6,13 +6,14 @@ from datetime import datetime
 import json
 from pathlib import Path
 import queue
+from time import monotonic
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog, colorchooser
 
 from profile import (
     ROOT, USER_DATA, BASIC_CODES, MAX_LAYERS, MAX_SNIPPETS, MACRO_POOL_SIZE, MATRIX,
     MODES, EFFECTS, SLIDER_MODES, atomic_json, compile_snippet, decode_profile,
-    default_profile, encode_profile, key_config, label_for_code, layer_config,
+    default_profile, encode_lighting, encode_profile, key_config, label_for_code, layer_config,
 )
 from screen_editor import ScreenEditor
 from led_layout import (LED_COUNT, MAIN_COUNT, LED_LAYOUT_PATH, default_positions,
@@ -37,6 +38,7 @@ class Editor:
         self.generation = None
         self.detection = None
         self.has_detection = False
+        self.next_connection_check = 0
         self.closing = False
         self.progress = queue.SimpleQueue()
         self.history, self.future = [], []
@@ -47,6 +49,8 @@ class Editor:
         self.on_device = None
         self.active_profile = None
         self.preview_phase = 0
+        self.preview_sent = None
+        self.preview_renew_at = 0
         self.led_selected = None
         self.led_drag_start = None
         self.led_drag_changed = False
@@ -114,7 +118,6 @@ class Editor:
         self.refresh()
         window.protocol("WM_DELETE_WINDOW", self.close)
         window.after(100, self.tick)
-        window.after(180, self.connect)
 
     @property
     def current_layer(self):
@@ -152,6 +155,10 @@ class Editor:
                     self.device = None
                     self.has_detection = False
                     self.detection = None
+                    self.preview_sent = None
+                    self.key_live.set("Regler GP28 · USB-Verbindung getrennt")
+                    self.detect_text.set("USB-Verbindung getrennt · Das Pad wird erneut gesucht.")
+                    self.next_connection_check = monotonic() + 2
                 if isinstance(error, UnsupportedCommand) and polling:
                     self.has_detection = False
                 if not polling and hasattr(self, "tester_page"):
@@ -165,25 +172,62 @@ class Editor:
                     self.status.set(str(error))
                     messagebox.showerror("OmniPad", str(error), parent=self.window)
             self.refresh_buttons()
-        if not self.closing and self.device and self.has_detection and not self.polling and not self.busy():
-            pad = self.device
-            testing = self.tester_page.active
-
-            def read_signals():
-                detection = pad.detection()
-                return detection, pad.tester_report() if testing else None
-
-            self.submit(read_signals, self.receive_signals, polling=True)
+        if not self.closing and not self.polling and not self.busy():
+            if self.device:
+                self.poll_device()
+            elif monotonic() >= self.next_connection_check:
+                self.connect(automatic=True)
         if not self.closing or self.tasks:
             self.window.after(100, self.tick)
 
-    def receive_signals(self, result):
-        detection, report = result
-        self.detected(detection)
-        if report is not None:
-            self.tester_page.report(detection, report)
+    def poll_device(self):
+        pad = self.device
+        read_detection = self.has_detection
+        read_tester = self.tester_page.active and self.tester_page.native
+        payload = self.lighting_preview_payload()
+        send_preview = payload != self.preview_sent or (
+            payload is not None and monotonic() >= self.preview_renew_at)
+        if not (read_detection or read_tester or send_preview):
+            return
 
-    def connect(self, replace=False):
+        def poll():
+            preview_rejected = False
+            if send_preview:
+                try:
+                    pad.preview_lighting(payload)
+                except UnsupportedCommand:
+                    preview_rejected = True
+            try:
+                detection = pad.detection() if read_detection else None
+            except UnsupportedCommand:
+                detection = None
+            report = pad.tester_report() if read_tester else None
+            return detection, report, preview_rejected
+
+        def ready(result):
+            if self.device is not pad:
+                return
+            detection, report, preview_rejected = result
+            if preview_rejected:
+                self.preview_sent = None
+                if detection is None or not detection.enabled:
+                    self.capabilities["light_preview"] = False
+                    self.status.set("Das Pad hat die Hardwarevorschau abgelehnt")
+            elif send_preview:
+                self.preview_sent = payload
+                self.preview_renew_at = monotonic() + 0.5
+            self.has_detection &= detection is not None
+            if detection is not None:
+                previous = self.detection
+                self.detected(detection)
+                if self.tester_page.active and not self.tester_page.native:
+                    self.tester_page.report_detection(previous, detection)
+            if report is not None and self.tester_page.active:
+                self.tester_page.report(detection, report)
+
+        self.submit(poll, ready, polling=True)
+
+    def connect(self, replace=False, *, automatic=False):
         if self.busy():
             return
         if replace and self.dirty() and not messagebox.askyesno(
@@ -191,55 +235,100 @@ class Editor:
                 parent=self.window):
             return
         previous = self.device
-        was_testing = self.tester_page.active
+        was_diagnosing = self.tester_page.active or (self.detection and self.detection.enabled)
+        was_previewing = self.preview_sent is not None
         self.tester_page.active = False
         self.device = None
         self.has_detection = False
-        self.status.set("USB-Verbindung wird geprüft …")
+        self.detection = None
+        self.preview_sent = None
+        if not automatic or self.next_connection_check == 0:
+            self.status.set("USB-Verbindung wird geprüft …")
+        self.next_connection_check = monotonic() + 2
         metadata = deepcopy(self.profile)
+
         def read():
             if previous:
                 try:
-                    if was_testing:
+                    if was_diagnosing:
                         previous.diagnose(False)
+                    if was_previewing:
+                        previous.preview_lighting(None)
                 except (OSError, RuntimeError):
                     pass
                 finally:
                     previous.close()
-            pad = OmniPad.connect()
             try:
-                caps = pad.capabilities()
-                raw = pad.read_profile() if caps and caps["enabled"] else None
-                snapshot = pad.snapshot()
+                pad = OmniPad.connect()
+            except OSError as error:
+                raise ViaError(f"Die VIA-Schnittstelle konnte nicht geöffnet werden · {error}") from error
+            try:
+                warnings = []
+                try:
+                    caps = pad.capabilities()
+                except UnsupportedCommand:
+                    caps = None
                 try:
                     detection = pad.detection()
                 except UnsupportedCommand:
                     detection = None
-                return pad, caps, raw, snapshot, detection
+                try:
+                    pad.tester_report()
+                except UnsupportedCommand:
+                    native_tester = False
+                else:
+                    native_tester = True
+                raw = None
+                snapshot = None
+                try:
+                    raw = pad.read_profile() if caps and caps["enabled"] else None
+                except ViaError:
+                    warnings.append("Geräteprofil konnte nicht geladen werden")
+                try:
+                    snapshot = pad.snapshot()
+                except ViaError:
+                    warnings.append("VIA-Sicherung konnte nicht gelesen werden")
+                return pad, caps, raw, snapshot, detection, native_tester, warnings
+            except OSError as error:
+                pad.close()
+                raise ViaError(f"Die USB-Verbindung wurde beim Auslesen unterbrochen · {error}") from error
             except Exception:
                 pad.close()
                 raise
         def ready(result):
-            self.device, self.capabilities, raw, snapshot, detection = result
+            self.device, self.capabilities, raw, snapshot, detection, native_tester, warnings = result
+            self.tester_page.native = native_tester
             self.generation = self.capabilities["generation"] if self.capabilities else None
             self.on_device = raw
-            self.active_profile = decode_profile(raw, metadata) if raw else None
-            self.detection = detection
             self.has_detection = detection is not None
-            atomic_json(USER_DATA / "backups" / f"via-{datetime.now():%Y%m%d-%H%M%S}.json", snapshot)
-            if replace or not self.disk_draft:
-                self.profile = deepcopy(self.active_profile) if raw else default_profile(snapshot)
+            self.active_profile = None
+            if raw:
+                try:
+                    self.active_profile = decode_profile(raw, metadata)
+                except (ValueError, KeyError, TypeError):
+                    warnings.append("Geräteprofil konnte nicht ausgewertet werden")
+            if snapshot is not None:
+                try:
+                    atomic_json(USER_DATA / "backups" / f"via-{datetime.now():%Y%m%d-%H%M%S}.json", snapshot)
+                except OSError:
+                    warnings.append("VIA-Sicherung konnte nicht gespeichert werden")
+            if (replace or not self.disk_draft) and (self.active_profile or snapshot is not None):
+                self.profile = deepcopy(self.active_profile) if self.active_profile else default_profile(snapshot)
                 self.disk_draft = True
                 self.history.clear()
                 self.future.clear()
                 self.save_draft()
             self.layer = min(self.layer, len(self.profile["layers"]) - 1)
-            version = f"Firmware {self.device.firmware}"
+            version = f"Firmware {self.device.firmware}" if self.device.firmware else "Firmwareversion unbekannt"
             message = f"USB verbunden · {version} · {len(self.profile['layers'])} eingerichtete Layer"
             if not self.capabilities:
                 message += " · Erweiterte Funktionen benötigen die neue Firmware"
-            self.status.set(message)
+            self.status.set(" · ".join((message, *warnings)))
             self.refresh()
+            if detection is not None:
+                self.detected(detection)
+            else:
+                self.detect_text.set("Diese Firmware liefert keine Live-Eingangsdaten für den Inspektor.")
         self.submit(read, ready)
 
     def change(self, mutator):
@@ -306,6 +395,8 @@ class Editor:
         self.write_button.configure(state="normal" if self.device and not self.busy() and not testing else "disabled")
         if hasattr(self, "tester_page"):
             self.tester_page.refresh()
+        if hasattr(self, "light_live_status"):
+            self.refresh_light_live_status()
 
     def refresh(self):
         if not hasattr(self, "key_canvas"):
@@ -658,6 +749,8 @@ class Editor:
             self.led_status.set("LED-Layout ungültig – Standardpositionen geladen")
         self.light_settings = ScrollPanel(self.light_page, 320)
         self.light_settings.pack(side="right", fill="y", padx=(12, 0), pady=(8, 0))
+        self.light_live = tk.BooleanVar(value=True)
+        self.light_live_status = tk.StringVar()
         self.zone = 0
         self.window.after(80, self.animate_lights)
 
@@ -665,6 +758,10 @@ class Editor:
         self.light_settings.clear()
         form = self.light_form = Form(self.light_settings.content)
         form.title("Beleuchtung pro Layer")
+        ttk.Checkbutton(form.parent, text="Live am Pad", variable=self.light_live,
+                        command=self.refresh_light_live_status).pack(anchor="w", padx=14)
+        label(form.parent, textvariable=self.light_live_status, size=9, color=MUTED,
+              wraplength=270).pack(anchor="w", padx=14, pady=(4, 8))
         chosen = form.choice("zone", "LED-Gruppe", self.zone, ["Main · 14 LEDs", "Frame · 43 LEDs"])
         chosen.trace_add("write", lambda *_: self.select_zone(chosen))
         zone = self.current_layer["lighting"][self.zone]
@@ -689,11 +786,47 @@ class Editor:
         self.zone = 0 if variable.get().startswith("Main") else 1
         self.refresh_light_form()
 
+    def lighting_form_values(self):
+        values = self.light_form.values()
+        values.pop("zone")
+        values["triggers"] = sum(bit for bit in (1, 2, 4, 8) if values.pop(f"trigger{bit}"))
+        return values
+
+    def lighting_preview_zones(self):
+        saved = self.current_layer["lighting"]
+        try:
+            zones = list(saved)
+            zones[self.zone] = self.lighting_form_values()
+            return zones, encode_lighting(zones)
+        except ValueError:
+            # A number can be temporarily empty or out of range while typing.
+            return saved, encode_lighting(saved)
+
+    def refresh_light_live_status(self):
+        if not self.device:
+            text = "Livevorschau wartet auf USB"
+        elif not (self.capabilities and self.capabilities["light_preview"]):
+            text = "Livevorschau am Pad benötigt Firmware 6"
+        elif self.tester_page.active or (self.detection and self.detection.enabled):
+            text = "Livevorschau pausiert während des Tests"
+        elif self.light_live.get():
+            text = "Änderungen sofort sichtbar · Übernehmen behält sie im Entwurf"
+        else:
+            text = "Livevorschau am Pad ausgeschaltet"
+        if self.light_live_status.get() != text:
+            self.light_live_status.set(text)
+
+    def lighting_preview_payload(self):
+        if (not self.capabilities or not self.capabilities["light_preview"] or not self.light_live.get()
+                or self.tester_page.active or self.tester_page.pending
+                or (self.detection and self.detection.enabled)
+                or self.notebook.select() != str(self.light_page)):
+            return None
+        return self.lighting_preview_zones()[1]
+
     def apply_lighting(self):
         try:
-            values = self.light_form.values()
-            values.pop("zone")
-            values["triggers"] = sum(bit for bit in (1, 2, 4, 8) if values.pop(f"trigger{bit}"))
+            values = self.lighting_form_values()
             self.change(lambda p: p["layers"][self.layer]["lighting"][self.zone].update(values))
         except ValueError as error:
             messagebox.showerror("Beleuchtung", str(error), parent=self.window)
@@ -836,17 +969,18 @@ class Editor:
         left, top, right, bottom = square_bounds(width, height)
         canvas.create_rectangle(left, top, right, bottom,
                                 fill="#192028", outline="#3c4855", width=2)
+        zones, _ = self.lighting_preview_zones()
         for zone_index, count in ((0, 14), (1, 43)):
-            zone = self.current_layer["lighting"][zone_index]
+            zone = zones[zone_index]
             for index in range(count):
                 phase = self.preview_phase * (zone["speed"] + 16) / 200
                 position = count - 1 - index if zone["reverse"] else index
                 blend, level = 0, zone["brightness"] / 64
                 effect = zone["effect"]
                 if effect == 1:
-                    blend = index % 2
+                    blend = position % 2
                 elif effect == 2:
-                    blend = int(index >= count // 2)
+                    blend = int(position >= count // 2)
                 elif effect == 3:
                     blend = position / (count - 1)
                 elif effect == 4:
@@ -1129,6 +1263,8 @@ class Editor:
             try:
                 if self.capabilities and (self.tester_page.active or (self.detection and self.detection.enabled)):
                     self.device.diagnose(False)
+                if self.preview_sent is not None:
+                    self.device.preview_lighting(None)
             except (OSError, RuntimeError):
                 pass
             self.device.close()

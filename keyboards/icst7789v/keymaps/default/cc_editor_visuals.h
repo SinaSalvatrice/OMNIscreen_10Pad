@@ -36,18 +36,20 @@ static rgb_t omp_mix(rgb_t a, rgb_t b, uint8_t blend) {
     };
 }
 
-static void omp_lighting_tick(void) {
+static void omp_lighting_tick(bool preview) {
     if (timer_elapsed(omp_light_timer) < 30u) return;
     omp_light_timer = timer_read();
     ++omp_phase;
     // QMK's main animation must not overwrite either editor-controlled zone.
-    if (!omp_qmk_lighting_override && !rgblight_is_enabled()) rgblight_enable_noeeprom();
-    if (rgblight_get_mode() != RGBLIGHT_MODE_STATIC_LIGHT) rgblight_mode_noeeprom(RGBLIGHT_MODE_STATIC_LIGHT);
+    if (!preview) {
+        if (!omp_qmk_lighting_override && !rgblight_is_enabled()) rgblight_enable_noeeprom();
+        if (rgblight_get_mode() != RGBLIGHT_MODE_STATIC_LIGHT) rgblight_mode_noeeprom(RGBLIGHT_MODE_STATIC_LIGHT);
+    }
     for (uint8_t zone = 0; zone < 2; ++zone) {
-        const omp_zone_t *z = &omp_profile.layers[cc_active].zones[zone];
+        const omp_zone_t *z = preview ? &omp_preview_zones[zone] : &omp_profile.layers[cc_active].zones[zone];
         uint8_t count = zone ? CC_RGB_FRAME_LED_COUNT : CC_RGB_MAIN_LED_COUNT;
         uint8_t start = zone ? CC_RGB_FRAME_LED_START : 0;
-        uint8_t brightness = omp_brightness_override[zone] == 255 ? z->brightness : omp_brightness_override[zone];
+        uint8_t brightness = preview || omp_brightness_override[zone] == 255 ? z->brightness : omp_brightness_override[zone];
         uint16_t phase = ((uint32_t)timer_read() * (z->speed + 16u) / 1024u);
         uint16_t elapsed = timer_elapsed(omp_trigger_at);
         uint16_t duration = (uint16_t)z->duration * 10u;
@@ -55,7 +57,7 @@ static void omp_lighting_tick(void) {
         uint8_t effect = z->effect;
         bool enabled = z->flags & 1u;
         rgb_t a = omp_rgb(z->color_a), b = omp_rgb(z->color_b);
-        if (zone == 0 && omp_qmk_lighting_override) {
+        if (!preview && zone == 0 && omp_qmk_lighting_override) {
             brightness = rgblight_get_val();
             if (brightness > RGBLIGHT_LIMIT_VAL) brightness = RGBLIGHT_LIMIT_VAL;
             enabled = rgblight_is_enabled();
@@ -106,7 +108,8 @@ static void omp_lighting_tick(void) {
                 (uint16_t)color.g * level / 255u, (uint16_t)color.b * level / 255u);
         }
     }
-    rgblight_set(); // One flush for the complete chain.
+    if (preview) rgblight_driver.flush();
+    else rgblight_set(); // One flush for the complete chain.
 }
 
 static uint32_t omp_screen_generation = UINT32_MAX;

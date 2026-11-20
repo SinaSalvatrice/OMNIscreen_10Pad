@@ -81,6 +81,21 @@ def zone_config(color="#ce865e"):
             "triggers": 7, "duration": 50}
 
 
+def encode_lighting(zones):
+    if len(zones) != 2:
+        raise ValueError("Es werden Main- und Frame-Beleuchtung benötigt.")
+    payload = bytearray()
+    for zone in zones:
+        for name, low, high in (("effect", 0, 8), ("brightness", 0, 64), ("speed", 0, 255),
+                                ("triggers", 0, 15), ("duration", 1, 255)):
+            integer(zone[name], low, high, f"Beleuchtung {name}")
+        flags = int(zone["enabled"]) | (int(zone["reverse"]) << 1)
+        payload.extend(ZONE_STRUCT.pack(zone["effect"], zone["brightness"], zone["speed"], flags,
+                                        color565(valid_color(zone["color_a"])), color565(valid_color(zone["color_b"])),
+                                        zone["triggers"], zone["duration"]))
+    return bytes(payload)
+
+
 def layer_config(index):
     return {"name": f"Layer {index + 1}", "color": "#ce865e",
             "keys": [key_config() for _ in range(KEY_COUNT)], "encoders": [0, 0],
@@ -389,16 +404,7 @@ def encode_profile(profile):
             raise ValueError("Das Reglerminimum muss kleiner als das Maximum sein.")
         payload.extend(SLIDER_STRUCT.pack(slider["mode"], bool(slider["reverse"]), slider["deadband"],
                                          slider["step"], slider["low"], slider["high"], slider["min"], slider["max"]))
-        if len(layer["lighting"]) != 2:
-            raise ValueError("Es werden Main- und Frame-Beleuchtung benötigt.")
-        for zone in layer["lighting"]:
-            for name, low, high in (("effect", 0, 8), ("brightness", 0, 64), ("speed", 0, 255),
-                                    ("triggers", 0, 15), ("duration", 1, 255)):
-                integer(zone[name], low, high, f"Beleuchtung {name}")
-            flags = int(zone["enabled"]) | (int(zone["reverse"]) << 1)
-            payload.extend(ZONE_STRUCT.pack(zone["effect"], zone["brightness"], zone["speed"], flags,
-                                            color565(valid_color(zone["color_a"])), color565(valid_color(zone["color_b"])),
-                                            zone["triggers"], zone["duration"]))
+        payload.extend(encode_lighting(layer["lighting"]))
     screen = profile["screen"]
     fields = screen["fields"]
     payload.extend(struct.pack("<2BH", bool(screen["enabled"]), len(fields), color565(screen["background"])))

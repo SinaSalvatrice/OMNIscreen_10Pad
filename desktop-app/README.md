@@ -13,6 +13,7 @@ Der Starter richtet die USB-Bibliothek in einer eigenen Python-Umgebung ein.
 - Rechtsklick auf einen Layer öffnet Name, Farbmarkierung, Duplizieren und Startlayer. **+ Layer** fügt einen Layer hinzu.
 - Der Schieberegler an **GPIO28 / ADC2** erhält seine eigene Belegung pro Layer. Er kann Auf-/Abwärtsaktionen oder Main-/Frame-Helligkeit steuern. Minimum, Maximum, Schrittweite, Totzone und Richtung sind einstellbar. Firmwareversion 5 dreht die Grundrichtung um. Die Option „Richtung umkehren“ bleibt als Override pro Layer verfügbar.
 - **Beleuchtung** bietet neun Effekte, zwei Farben und unabhängige Einstellungen für die 14 Main- und 43 Frame-LEDs. Trigger reagieren auf Taste, Encoder, Layer oder Regler.
+- **Live am Pad** zeigt mit Firmware 6 die Einstellungen des ausgewählten Layers beim Bearbeiten direkt auf beiden LED-Gruppen. Beim Verlassen des Reiters, während eines Tests oder nach USB-Trennung erscheint wieder die gespeicherte Beleuchtung. **Übernehmen** behält die Änderungen im App-Entwurf, **Auf Pad speichern** überträgt sie dauerhaft.
 - **Quadratische 1:1-Vorschau:** Die LED-Anordnung wird in einem mittig platzierten Quadrat dargestellt, auch wenn das Beleuchtungsfenster breit ist. Drag-and-drop, Tastaturbewegung und die gespeicherten X/Y-Koordinaten nutzen dieselbe quadratische Fläche. Vorhandene LED-Anordnungen bleiben unverändert.
 - **Physische LED-Anordnung:** In der Beleuchtungs-Vorschau jede LED (0–56) einzeln anklicken und frei verschieben. Die Nummer bleibt die **echte Position im Datenstrang**, unabhängig von den Bildschirmkoordinaten. Main = 0–13, Frame = 14–56. Optional Nummern einblenden; selektierte LED mit Pfeiltasten um 1 px, mit Shift+Pfeiltasten um 5 px bewegen.
 - Die Editor-Anordnung wird sofort nach dem Loslassen lokal in `desktop-app/user-data/led-layout.json` gespeichert und gilt für alle Layer. **Anordnung laden**, **Speichern unter**, **Rückgängig** und **Zurücksetzen** stehen direkt unter der Vorschau. Import/Export verwenden `omnipad-led-layout` v1 mit 57 festen X/Y-Positionen (0–1). Diese Koordinaten sind reine **Editor-Metadaten**, keine firmwareseitige LED-Neuzuordnung und werden **nicht** aufs Pad geflasht. Für die Sicherung auf einem zweiten PC `Speichern unter` verwenden.
@@ -22,7 +23,7 @@ Der Starter richtet die USB-Bibliothek in einer eigenen Python-Umgebung ein.
 - **Tester** protokolliert beobachtete Signale mit GPIO oder Anschluss, Funktion und Messwert.
   Unbelegte Matrixpositionen werden als nicht zugeordnet angezeigt.
   Display, Main-LEDs und Frame-LEDs lassen sich separat ausgeben und am Pad per Sichtprüfung beurteilen.
-  Der Tester braucht Firmwareversion 5. Ohne Signal bleibt die Liste leer.
+  Der vollständige Tester ist ab Firmwareversion 5 verfügbar. Mit älterer Firmware, die den Inspektor unterstützt, sind Live-Eingänge im Basis-Tester verfügbar. Ohne Signal bleibt die Liste leer.
 - **Erkennung** zeigt Tasten, Encoder und Regler. Der Hardware-Test unterdrückt PC-Aktionen des Pads.
 - **Auf Pad speichern** überträgt das gesamte Profil und liest es zur Prüfung vollständig zurück. Import/Export und Rückgängig/Wiederholen beziehen sich auf den gesamten Entwurf.
 
@@ -49,7 +50,11 @@ Kein PCF8575, kein ADXL345; der Schieberegler bleibt an GP28.
 
 K0 ohne zugewiesene Aktion bedient das Modul wie bisher.
 K0 zwei Sekunden halten öffnet bei aktivem Editorprofil immer das Modulmenü.
-Encoder-Druck beendet den Matrix-Test.
+Encoder-Druck beendet den am Pad gestarteten Matrix-Test.
+
+Ab Firmware 6 setzt **Encoder-Taster und K0 gleichzeitig fünf Sekunden halten**
+die QMK-/VIA-Belegung und beide OmniPad-Profilspeicher auf Werkseinstellungen zurück.
+Das Pad startet neu. Vor Ablauf der fünf Sekunden loslassen, um abzubrechen.
 
 ## Gerätespeicher
 

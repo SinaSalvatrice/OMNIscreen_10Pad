@@ -46,27 +46,28 @@ class OmniPad:
     def __init__(self, device, usb_id):
         self._device = device
         self.usb_id = usb_id
-        self.protocol = self._integer((0x01,), 1, 2)
-        self.firmware = self._integer((0x02, 0x04), 2, 4)
         self._device.set_nonblocking(0)
+        self.protocol = self._integer((0x01,), 1, 2)
+        try:
+            self.firmware = self._integer((0x02, 0x04), 2, 4)
+        except UnsupportedCommand:
+            self.firmware = 0
         self.layer_count = self._integer((0x11,), 1, 1)
         if self.protocol < 12 or not 1 <= self.layer_count <= 32:
             raise ViaError("Diese VIA-Firmware wird vom Editor nicht unterstützt.")
 
     @classmethod
     def connect(cls):
-        matches = [
-            (entry["path"], (vid, pid))
-            for vid, pid in USB_IDS
-            for entry in hid.enumerate(vid, pid)
-            if (entry["usage_page"], entry["usage"]) == (0xFF60, 0x61)
-            and entry["product_string"] == PRODUCT
-        ]
+        interfaces = [(entry, (vid, pid)) for vid, pid in USB_IDS for entry in hid.enumerate(vid, pid)]
+        matches = {entry["path"]: usb_id for entry, usb_id in interfaces
+                   if (entry.get("usage_page"), entry.get("usage")) == (0xFF60, 0x61)}
         if not matches:
+            if interfaces:
+                raise ViaError("OmniPad über USB sichtbar · Die VIA-Schnittstelle fehlt.")
             raise ViaError("Kein OmniPad am USB-Anschluss gefunden.")
         if len(matches) > 1:
             raise ViaError("Mehrere OmniPads gefunden. Bitte nur ein Pad anschließen.")
-        path, usb_id = matches[0]
+        path, usb_id = next(iter(matches.items()))
         device = hid.device()
         try:
             device.open_path(path)
@@ -92,6 +93,8 @@ class OmniPad:
         if self._device.write(packet) != len(packet):
             raise ViaError("USB-Bericht konnte nicht vollständig gesendet werden.")
         reply = bytes(self._device.read(32, timeout))
+        if not reply:
+            raise ViaError("Die VIA-Schnittstelle antwortet nicht. VIA oder andere Pad-Editoren schließen und USB prüfen.")
         if reply[:1] == b"\xff":
             raise UnsupportedCommand("Die Firmware unterstützt diesen VIA-Befehl nicht.")
         prefix = request if echo is None else request[:echo]
@@ -182,7 +185,8 @@ class OmniPad:
         if reply[3:7] != b"OMP2" or int.from_bytes(reply[9:11], "little") != PROFILE_SIZE:
             raise UnsupportedCommand("Unbekannte OmniPad-Profilversion.")
         return {"enabled": bool(reply[7]), "max_layers": reply[8],
-                "generation": int.from_bytes(reply[11:15], "little"), "expander": bool(reply[15])}
+                "generation": int.from_bytes(reply[11:15], "little"), "expander": bool(reply[15]),
+                "light_preview": bool(reply[16] & 1)}
 
     def read_profile(self):
         data = bytearray()
@@ -223,6 +227,9 @@ class OmniPad:
 
     def test_output(self, output):
         self._exchange((0x07, 0, 0x78, output))
+
+    def preview_lighting(self, payload):
+        self._exchange(bytes((0x07, 0, 0x79, payload is not None)) + (payload or b""))
 
     def detection(self):
         reply = self._exchange((0x08, 0, 0x70))

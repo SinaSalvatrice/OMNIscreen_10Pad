@@ -8,6 +8,7 @@ from tkinter import ttk
 
 from profile import MATRIX, MODES, ROOT, label_for_code
 from ui_helpers import BG, PANEL, MUTED, button, label
+from via import UnsupportedCommand, ViaError
 
 
 class Tester(tk.Frame):
@@ -16,6 +17,8 @@ class Tester(tk.Frame):
         self.editor = editor
         self.active = False
         self.pending = False
+        self.native = False
+        self.slider_baseline = None
         definition = ROOT / "keyboards" / "icst7789v"
         keyboard = json.loads((definition / "keyboard.json").read_text(encoding="utf-8"))
         self.matrix_pins = keyboard["matrix_pins"]
@@ -61,16 +64,22 @@ class Tester(tk.Frame):
 
     def refresh(self):
         device = self.editor.device
-        supported = bool(device and device.firmware >= 5)
+        supported = bool(device and (self.native or self.editor.has_detection))
         ready = supported and not self.pending and not self.editor.busy()
+        start_hint = ("Tester starten und ein Bedienelement betätigen" if self.native else
+                      "Basis-Tester verfügbar · Für Display- und LED-Tests Firmware 6 installieren")
         self.start.configure(state="normal" if ready and not self.active else "disabled")
-        for control in (self.stop, *self.outputs):
-            control.configure(state="normal" if ready and self.active else "disabled")
-        if not supported:
+        self.stop.configure(state="normal" if ready and self.active else "disabled")
+        for control in self.outputs:
+            control.configure(state="normal" if ready and self.active and self.native else "disabled")
+        if not device:
             self.active = False
-            self.status.set("OmniPad mit Tester-Firmware (Version 5) verbinden")
-        elif self.status.get().startswith("OmniPad mit"):
-            self.status.set("Tester starten und ein Bedienelement betätigen")
+            self.status.set("OmniPad per USB verbinden, um Signale zu sehen")
+        elif not supported:
+            self.active = False
+            self.status.set("Die verbundene Firmware liefert keine Tester-Signale")
+        elif self.status.get().startswith(("OmniPad per USB", "Die verbundene Firmware")) or not self.status.get():
+            self.status.set(start_hint)
 
     def clear(self):
         entries = self.table.get_children()
@@ -83,14 +92,34 @@ class Tester(tk.Frame):
             return
         if active:
             self.clear()
+            self.slider_baseline = self.editor.detection.slider_raw if self.editor.detection else None
         self.pending = True
+        native = self.native
 
-        def changed(_):
+        def set_mode():
+            try:
+                pad.diagnose(active, tester=native)
+            except UnsupportedCommand:
+                if native:
+                    raise
+                if active and not pad.detection().enabled:
+                    return "K0 am Pad dreimal drücken und den Tester erneut starten", None
+                if not active:
+                    return "Tester beendet · Hardware-Test bei Bedarf am Pad beenden", None
+            report = pad.tester_report() if active and native else None
+            if report is not None and not report[0]:
+                raise ViaError("Das Pad hat den Tester nicht aktiviert.")
+            return None, report
+
+        def changed(result):
+            hint, report = result
             self.pending = False
-            self.active = active
-            self.status.set("Tester aktiv · Bedienelemente am Pad betätigen" if active else "Tester beendet")
+            self.active = active and hint is None
+            self.status.set(hint or ("Tester aktiv · Bedienelemente am Pad betätigen" if active else "Tester beendet"))
+            if report is not None:
+                self.report(self.editor.detection, report)
             self.refresh()
-        self.editor.submit(lambda: pad.diagnose(active, tester=True), changed)
+        self.editor.submit(set_mode, changed)
 
     def preview(self, output):
         pad = self.editor.device
@@ -119,12 +148,42 @@ class Tester(tk.Frame):
             self.status.set("Tester am Pad beendet")
             self.refresh()
 
+    def report_detection(self, previous, current):
+        if not current.enabled:
+            self.report(current, (False, False, ()))
+            return
+        events = []
+        if previous and previous.enabled:
+            changed = previous.mask ^ current.mask
+            for index, (row, col) in enumerate(MATRIX):
+                if changed & (1 << index):
+                    events.append((1, (row << 4) | col, bool(current.mask & (1 << index))))
+            for index, source in ((10, 3), (11, 2)):
+                if changed & (1 << index):
+                    events.append((source, 0, bool(current.mask & (1 << index))))
+            for before, after, direction in ((previous.clockwise, current.clockwise, 1),
+                                              (previous.counterclockwise, current.counterclockwise, 0)):
+                if before != after:
+                    events.append((4, direction, 0))
+            seen_presses = ((current.mask & ~previous.mask) & 0x3FF).bit_count()
+            if current.presses - previous.presses > seen_presses:
+                self.add("Signal nicht zugeordnet", "Unbekannt", "Kurzer Tastendruck zwischen zwei USB-Abfragen")
+        if current.slider_raw is not None:
+            if self.slider_baseline is None:
+                self.slider_baseline = current.slider_raw
+            elif abs(current.slider_raw - self.slider_baseline) >= 7:
+                events.append((5, current.slider_percent, current.slider_raw))
+                self.slider_baseline = current.slider_raw
+        self.report(current, (True, False, events))
+
     def describe(self, source, detail, value, detection):
         edge = "Gedrückt" if value else "Losgelassen"
         if source == 1:
             row, column = detail >> 4, detail & 15
             pairs = self.matrix_pins
-            if detection.expander and row < 3 and column < 4:
+            caps = self.editor.capabilities
+            expander = detection.expander if detection else caps and caps["expander"]
+            if expander and row < 3 and column < 4:
                 pins = f"{self.i2c_pins} · P0{row} / P1{column}"
             elif row < len(pairs["rows"]) and column < len(pairs["cols"]):
                 pins = f"{pairs['rows'][row]} / {pairs['cols'][column]}"
@@ -134,7 +193,7 @@ class Tester(tk.Frame):
                 index = MATRIX.index((row, column))
                 label_text = self.editor.key_name(index)
                 profile = self.editor.active_profile
-                if profile and detection.active_layer < len(profile["layers"]):
+                if profile and detection and detection.active_layer < len(profile["layers"]):
                     key = profile["layers"][detection.active_layer]["keys"][index]
                     action = key["label"] or label_for_code(key["codes"][0])
                     edge += f" · {MODES[key['mode']]}: {action}"
@@ -149,8 +208,11 @@ class Tester(tk.Frame):
         if source == 5:
             return "Schieberegler", self.pins["SLIDER_ADC_PIN"], f"{detail} % · ADC {value}"
         if source == 6:
-            x, y, z = detection.sensor_xyz
-            return "ADXL345", self.i2c_pins, f"{'Bewegung' if detail else 'Sensor antwortet'} · X {x} / Y {y} / Z {z}"
+            function = "Bewegung" if detail else "Sensor antwortet"
+            if detection:
+                x, y, z = detection.sensor_xyz
+                function += f" · X {x} / Y {y} / Z {z}"
+            return "ADXL345", self.i2c_pins, function
         if source == 7:
             return "PCF8575", self.i2c_pins, "Matrix-Expander antwortet auf 0x20"
         if source == 8 and detail < 16:
