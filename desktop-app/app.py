@@ -15,6 +15,8 @@ from profile import (
     default_profile, encode_profile, key_config, label_for_code, layer_config,
 )
 from screen_editor import ScreenEditor
+from led_layout import (LED_COUNT, MAIN_COUNT, LED_LAYOUT_PATH, default_positions,
+                        read_positions, write_positions, to_canvas, from_canvas)
 from tester import Tester
 from ui_helpers import BG, PANEL, KEY, TEXT, MUTED, ACCENT, Form, ScrollPanel, button, label, style
 from via import OmniPad, ViaError, UnsupportedCommand
@@ -45,6 +47,16 @@ class Editor:
         self.on_device = None
         self.active_profile = None
         self.preview_phase = 0
+        self.led_selected = None
+        self.led_drag_start = None
+        self.led_drag_changed = False
+        self.led_undo = []
+        try:
+            self.led_positions = read_positions()
+            self.led_layout_warning = None
+        except (OSError, ValueError) as error:
+            self.led_positions = default_positions()
+            self.led_layout_warning = str(error)
         self.profile = default_profile()
         self.disk_draft = False
         draft = USER_DATA / "draft.omnipad.json"
@@ -618,7 +630,32 @@ class Editor:
         self.light_canvas = tk.Canvas(left, bg=PANEL, highlightthickness=0)
         self.light_canvas.pack(fill="both", expand=True)
         self.light_canvas.bind("<Configure>", lambda _: self.draw_light_preview())
-        label(left, "Main 0–13 · Frame 14–56", color=MUTED).pack(anchor="w", padx=18, pady=10)
+        self.light_canvas.bind("<Button-1>", self.led_button_down)
+        self.light_canvas.bind("<B1-Motion>", self.led_drag_move)
+        self.light_canvas.bind("<ButtonRelease-1>", self.led_button_up)
+        self.light_canvas.bind("<Left>", lambda _: self.nudge_led(-1, 0))
+        self.light_canvas.bind("<Right>", lambda _: self.nudge_led(1, 0))
+        self.light_canvas.bind("<Up>", lambda _: self.nudge_led(0, -1))
+        self.light_canvas.bind("<Down>", lambda _: self.nudge_led(0, 1))
+        self.light_canvas.bind("<Shift-Left>", lambda _: self.nudge_led(-5, 0))
+        self.light_canvas.bind("<Shift-Right>", lambda _: self.nudge_led(5, 0))
+        self.light_canvas.bind("<Shift-Up>", lambda _: self.nudge_led(0, -5))
+        self.light_canvas.bind("<Shift-Down>", lambda _: self.nudge_led(0, 5))
+        actions = tk.Frame(left, bg=PANEL)
+        actions.pack(fill="x", padx=12, pady=(6, 2))
+        self.led_show_numbers = tk.BooleanVar(value=True)
+        ttk.Checkbutton(actions, text="LED-Nummern", variable=self.led_show_numbers,
+                        command=self.draw_light_preview).pack(side="left")
+        button(actions, "Anordnung laden", self.import_led_layout).pack(side="left", padx=(9, 0))
+        button(actions, "Speichern unter", self.export_led_layout).pack(side="left", padx=(5, 0))
+        button(actions, "Rückgängig", self.undo_led_layout).pack(side="left", padx=(5, 0))
+        button(actions, "Zurücksetzen", self.reset_led_layout).pack(side="left", padx=(5, 0))
+        self.led_status = tk.StringVar(value="LED anklicken und ziehen · Pfeiltasten: 1 px · Shift: 5 px")
+        label(left, "", color=MUTED, textvariable=self.led_status).pack(anchor="w", padx=18, pady=(3, 0))
+        label(left, "Main 0–13 · Frame 14–56 · Reihenfolge bleibt unverändert",
+              color=MUTED).pack(anchor="w", padx=18, pady=(0, 8))
+        if self.led_layout_warning:
+            self.led_status.set("LED-Layout ungültig – Standardpositionen geladen")
         self.light_settings = ScrollPanel(self.light_page, 320)
         self.light_settings.pack(side="right", fill="y", padx=(12, 0), pady=(8, 0))
         self.zone = 0
@@ -669,14 +706,134 @@ class Editor:
             self.draw_light_preview()
         self.window.after(60, self.animate_lights)
 
+    def update_led_status(self):
+        if self.led_selected is None:
+            self.led_status.set("LED anklicken und ziehen · Pfeiltasten: 1 px · Shift: 5 px")
+            return
+        x, y = self.led_positions[self.led_selected]
+        group = "Main" if self.led_selected < MAIN_COUNT else "Frame"
+        self.led_status.set(
+            f"LED {self.led_selected:02d} · {group} · X {x*100:.1f} % / Y {y*100:.1f} %")
+
+    def led_button_down(self, event):
+        self.light_canvas.focus_set()
+        width = self.light_canvas.winfo_width()
+        height = self.light_canvas.winfo_height()
+        hits = []
+        for index, point in enumerate(self.led_positions):
+            x, y = to_canvas(point, width, height)
+            distance2 = (event.x-x)**2 + (event.y-y)**2
+            limit = 17 if index < MAIN_COUNT else 13
+            if distance2 <= limit**2:
+                hits.append((distance2, index))
+        self.led_selected = min(hits)[1] if hits else None
+        self.led_drag_start = deepcopy(self.led_positions) if hits else None
+        self.led_drag_changed = False
+        self.update_led_status()
+        self.draw_light_preview()
+
+    def led_drag_move(self, event):
+        if self.led_selected is None or self.led_drag_start is None:
+            return
+        point = from_canvas(event.x, event.y,
+                            self.light_canvas.winfo_width(),
+                            self.light_canvas.winfo_height())
+        if point != self.led_positions[self.led_selected]:
+            self.led_positions[self.led_selected] = point
+            self.led_drag_changed = True
+            self.update_led_status()
+            self.draw_light_preview()
+
+    def commit_led_positions(self, previous):
+        if previous == self.led_positions:
+            return
+        try:
+            write_positions(self.led_positions)
+        except (OSError, ValueError) as error:
+            self.led_positions = previous
+            messagebox.showerror("LED-Anordnung", str(error), parent=self.window)
+            self.draw_light_preview()
+            self.update_led_status()
+            return
+        self.led_undo.append(previous)
+        self.led_undo = self.led_undo[-50:]
+        self.update_led_status()
+        self.draw_light_preview()
+
+    def led_button_up(self, _):
+        previous = self.led_drag_start
+        self.led_drag_start = None
+        if previous is not None and self.led_drag_changed:
+            self.commit_led_positions(previous)
+        self.led_drag_changed = False
+
+    def nudge_led(self, dx, dy):
+        if self.led_selected is None:
+            return
+        previous = deepcopy(self.led_positions)
+        x, y = to_canvas(self.led_positions[self.led_selected],
+                         self.light_canvas.winfo_width(), self.light_canvas.winfo_height())
+        self.led_positions[self.led_selected] = from_canvas(
+            x + dx, y + dy, self.light_canvas.winfo_width(), self.light_canvas.winfo_height())
+        self.commit_led_positions(previous)
+
+    def undo_led_layout(self):
+        if not self.led_undo:
+            return
+        previous = self.led_undo.pop()
+        try:
+            write_positions(previous)
+        except (OSError, ValueError) as error:
+            self.led_undo.append(previous)
+            messagebox.showerror("LED-Anordnung", str(error), parent=self.window)
+            return
+        self.led_positions = previous
+        self.update_led_status()
+        self.draw_light_preview()
+
+    def reset_led_layout(self):
+        if not messagebox.askyesno(
+                "LED-Anordnung zurücksetzen",
+                "Alle 57 LED-Positionen auf die Ausgangsansicht zurücksetzen?",
+                parent=self.window):
+            return
+        previous = deepcopy(self.led_positions)
+        self.led_positions = default_positions()
+        self.commit_led_positions(previous)
+
+    def import_led_layout(self):
+        path = filedialog.askopenfilename(
+            title="LED-Anordnung laden",
+            filetypes=[("OmniPad LED-Layout", "*.json")], parent=self.window)
+        if not path:
+            return
+        try:
+            positions = read_positions(Path(path))
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            messagebox.showerror("LED-Anordnung", str(error), parent=self.window)
+            return
+        previous = deepcopy(self.led_positions)
+        self.led_positions = positions
+        self.commit_led_positions(previous)
+
+    def export_led_layout(self):
+        path = filedialog.asksaveasfilename(
+            title="LED-Anordnung speichern",
+            initialfile="omnipad.led-layout.json", defaultextension=".json",
+            filetypes=[("OmniPad LED-Layout", "*.json")], parent=self.window)
+        if path:
+            try:
+                write_positions(self.led_positions, Path(path))
+            except (OSError, ValueError) as error:
+                messagebox.showerror("LED-Anordnung", str(error), parent=self.window)
+
     def draw_light_preview(self):
         if not hasattr(self, "light_canvas"):
             return
         canvas = self.light_canvas
         canvas.delete("all")
-        width, height = max(550, canvas.winfo_width()), max(360, canvas.winfo_height())
-        left, right, top, bottom = 65, width - 65, 65, height - 65
-        canvas.create_rectangle(left - 24, top - 24, right + 24, bottom + 24,
+        width, height = canvas.winfo_width(), canvas.winfo_height()
+        canvas.create_rectangle(12, 12, width - 12, height - 12,
                                 fill="#192028", outline="#3c4855", width=2)
         for zone_index, count in ((0, 14), (1, 43)):
             zone = self.current_layer["lighting"][zone_index]
@@ -709,21 +866,23 @@ class Editor:
                     rgb = [round(channel * level * 255) for channel in colorsys.hsv_to_rgb(
                         (position / count + phase / 255) % 1, 1, 1)]
                 color = "#" + "".join(f"{max(0, min(255, channel)):02x}" for channel in rgb) if zone["enabled"] else "#293039"
-                if zone_index == 0:
-                    x = left + 40 + (index % 7) * (right - left - 80) / 6
-                    y = top + 60 + (index // 7) * max(70, bottom - top - 120)
-                    radius = 13
-                else:
-                    progress = index / count * 4
-                    edge, part = int(progress), progress % 1
-                    x, y = ((left + (right - left) * part, top) if edge == 0 else
-                            (right, top + (bottom - top) * part) if edge == 1 else
-                            (right - (right - left) * part, bottom) if edge == 2 else
-                            (left, bottom - (bottom - top) * part))
-                    radius = 7
-                canvas.create_oval(x - radius, y - radius, x + radius, y + radius, fill=color, outline="#50606e")
-        canvas.create_text(width / 2, height / 2, text=self.current_layer["name"], fill=TEXT,
-                            font=("Segoe UI", 19, "bold"))
+                led_number = index if zone_index == 0 else MAIN_COUNT + index
+                x, y = to_canvas(self.led_positions[led_number], width, height)
+                radius = 13 if zone_index == 0 else 9
+                selected = led_number == self.led_selected
+                canvas.create_oval(
+                    x-radius, y-radius, x+radius, y+radius, fill=color,
+                    outline=ACCENT if selected else "#50606e",
+                    width=3 if selected else 1, tags=(f"led-{led_number}",))
+                if self.led_show_numbers.get():
+                    brightness = sum(rgb) if zone["enabled"] else 0
+                    ink = "#11171e" if brightness > 380 else "#f0eee9"
+                    canvas.create_text(
+                        x, y, text=str(led_number), fill=ink,
+                        font=("Segoe UI", 8 if zone_index == 0 else 7, "bold"),
+                        tags=(f"led-{led_number}",))
+        canvas.create_text(width / 2, 24, text=self.current_layer["name"], fill=TEXT,
+                           font=("Segoe UI", 14, "bold"))
 
     def create_snippets(self):
         left = tk.Frame(self.snippet_page, bg=PANEL, width=240)
@@ -963,6 +1122,8 @@ class Editor:
         if self.autosave_id:
             self.window.after_cancel(self.autosave_id)
             self._save_draft()
+        if self.led_drag_start is not None and self.led_drag_changed:
+            self.commit_led_positions(self.led_drag_start)
         if self.device:
             try:
                 if self.capabilities and (self.tester_page.active or (self.detection and self.detection.enabled)):
