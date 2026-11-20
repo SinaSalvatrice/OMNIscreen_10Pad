@@ -1,0 +1,42 @@
+{
+  "schema": "omnipad-screen",
+  "version": 1,
+  "width": 320,
+  "height": 240,
+  "enabled": true,
+  "background": "#10171f",
+  "fields": [
+    {
+      "type": 0,
+      "x": 12,
+      "y": 12,
+      "width": 110,
+      "height": 31,
+      "binding": 0,
+      "key": 0,
+      "layer": -1,
+      "pressed_only": false,
+      "icon": 0,
+      "scale": 1,
+      "foreground": "#f0eee9",
+      "background": "#243341",
+      "text": ""
+    },
+    {
+      "type": 1,
+      "x": 20,
+      "y": 19,
+      "width": 94,
+      "height": 16,
+      "binding": 2,
+      "key": 0,
+      "layer": -1,
+      "pressed_only": true,
+      "icon": 0,
+      "scale": 1,
+      "foreground": "#80e8a8",
+      "background": "#243341",
+      "text": "TASTE"
+    }
+  ]
+}
