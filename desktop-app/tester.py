@@ -23,7 +23,9 @@ class Tester(tk.Frame):
         self.encoder_pins = f"{encoder['pin_a']} A · {encoder['pin_b']} B"
         config = (definition / "config.h").read_text(encoding="utf-8")
         self.pins = dict(re.findall(r"^#define\s+(\w+)\s+(GP\d+)\b", config, re.MULTILINE))
-        self.i2c_pins = f"{self.pins['I2C1_SDA_PIN']} SDA · {self.pins['I2C1_SCL_PIN']} SCL"
+        i2c_sda = self.pins.get("I2C1_SDA_PIN")
+        i2c_scl = self.pins.get("I2C1_SCL_PIN")
+        self.i2c_pins = f"{i2c_sda} SDA · {i2c_scl} SCL" if i2c_sda and i2c_scl else "I²C · GPIO unbekannt"
         self.display_pins = " · ".join(f"{self.pins[name]} {signal}" for name, signal in (
             ("SPI_SCK_PIN", "SCK"), ("SPI_MOSI_PIN", "MOSI"), ("TFT_CS_PIN", "CS"),
             ("TFT_DC_PIN", "DC"), ("TFT_RST_PIN", "RST"), ("TFT_BL_PIN", "BL")))
