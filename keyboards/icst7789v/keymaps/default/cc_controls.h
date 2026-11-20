@@ -474,5 +474,5 @@ void housekeeping_task_user(void) {
     }
     if (!cc_matrix_test_view) cc_tester_active = false;
     cc_tester_sample();
-    if (cc_dirty && timer_elapsed(cc_last_draw) >= 35) cc_redraw();
+    if (cc_dirty && timer_elapsed(cc_last_draw) >= 35 && !omp_display_waits_for_input()) cc_redraw();
 }

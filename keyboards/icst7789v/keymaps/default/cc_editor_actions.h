@@ -4,7 +4,7 @@
 
 typedef struct {
     bool down, holding;
-    uint8_t taps, layer;
+    uint8_t taps, layer, origin_layer;
     uint16_t pressed_at, released_at, held_code;
     omp_key_t key;
 } omp_key_state_t;
@@ -36,6 +36,16 @@ static uint8_t omp_held_refs[32];
 static uint16_t omp_taps[32];
 static uint8_t omp_tap_head, omp_tap_tail;
 static uint16_t omp_tap_active, omp_tap_timer;
+
+// A synchronous TFT draw can span several taps or extend a short HID pulse.
+static bool omp_display_waits_for_input(void) {
+    if (omp_tap_active || omp_tap_head != omp_tap_tail) return true;
+    for (uint8_t index = 0; index < OMP_KEYS; ++index) {
+        const omp_key_state_t *state = &omp_keys[index];
+        if (state->key.mode == 1 && !state->holding && (state->down || state->taps)) return true;
+    }
+    return false;
+}
 
 static void omp_event(uint8_t trigger) {
     omp_trigger = trigger;
@@ -91,6 +101,7 @@ static void omp_start_macro(uint8_t index) {
 }
 
 static void omp_tap(uint16_t code) {
+    if (code <= KC_TRNS) return;
     if (code >= QK_MACRO_0 && code <= QK_MACRO_15) {
         omp_start_macro(code - QK_MACRO_0);
         return;
@@ -130,9 +141,10 @@ static bool omp_key_event(uint8_t index, bool pressed) {
     omp_key_state_t *state = &omp_keys[index];
     if (pressed) {
         if (state->down) return true;
-        if (state->taps && (state->layer != cc_active ||
+        if (state->taps && (state->origin_layer != cc_active ||
             timer_elapsed(state->released_at) >= state->key.term)) omp_finish_dance(index);
         if (!state->taps) {
+            state->origin_layer = cc_active;
             state->layer = cc_active;
             state->key = omp_profile.layers[cc_active].keys[index];
             if (state->key.mode == 0 && state->key.codes[0] == KC_TRNS) {
