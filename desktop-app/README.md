@@ -16,10 +16,10 @@ Der Starter richtet die USB-Bibliothek in einer eigenen Python-Umgebung ein.
 - **Snippet-Bibliothek** verwaltet Text, Tasten, gedrückte/gehaltene Tasten und Pausen. Der Schritt-Editor akzeptiert Aktionsnamen wie `tap Kopieren` und `down Strg` sowie Hex-Keycodes. Texte werden für deutsches Tastaturlayout übersetzt.
 - **Display-Studio** erstellt Felder, Texte und Icons auf 320 × 240 Pixeln. Ziehen verschiebt, der Eckgriff ändert die Größe. Datenquellen und Sichtbarkeitsregeln lassen sich rechts einstellen. Der Export verwendet `.screen.json`.
 - **Tester** protokolliert beobachtete Signale mit GPIO oder Anschluss, Funktion und Messwert.
-  Unbelegte Matrixpositionen und freie PCF8575-Eingänge werden als nicht zugeordnet angezeigt.
+  Unbelegte Matrixpositionen werden als nicht zugeordnet angezeigt.
   Display, Main-LEDs und Frame-LEDs lassen sich separat ausgeben und am Pad per Sichtprüfung beurteilen.
   Der Tester braucht Firmwareversion 5. Ohne Signal bleibt die Liste leer.
-- **Erkennung** zeigt Tasten, Encoder, Regler und den ADXL345-Status. Der Hardware-Test unterdrückt PC-Aktionen des Pads.
+- **Erkennung** zeigt Tasten, Encoder und Regler. Der Hardware-Test unterdrückt PC-Aktionen des Pads.
 - **Auf Pad speichern** überträgt das gesamte Profil und liest es zur Prüfung vollständig zurück. Import/Export und Rückgängig/Wiederholen beziehen sich auf den gesamten Entwurf.
 
 Der Editor speichert den Entwurf und USB-Sicherungen in `desktop-app/user-data`.
@@ -38,10 +38,10 @@ die Speicheraufteilung. Nach dem Flashen das exportierte Profil importieren
 und **Auf Pad speichern** drücken. Dieser Schritt stellt die Belegung,
 Snippets und die weiteren Profileinstellungen her.
 
-Die Firmware wird lokal über `build_uf2.bat` gebaut. Standard ist die GPIO-Matrix.
-Für die bereits auf den PCF8575 umverdrahtete Matrix vor dem Bauen in PowerShell
-`$env:PCF8575_MATRIX='yes'` setzen. Der GPIO-Build und der PCF8575-Build passen
-zur jeweiligen Verdrahtung.
+Die Firmware wird lokal über build_uf2.bat gebaut. Die einzige
+Matrixbelegung steht in keyboards/icst7789v/keyboard.json:
+Reihen GP12/GP13/GP14, Spalten GP15/GP26/GP27/GP0.
+Kein PCF8575, kein ADXL345; der Schieberegler bleibt an GP28.
 
 K0 ohne zugewiesene Aktion bedient das Modul wie bisher.
 K0 zwei Sekunden halten öffnet bei aktivem Editorprofil immer das Modulmenü.
