@@ -13,6 +13,8 @@ PRODUCT = "OMNIscreen 10Pad"
 USB_IDS = ((0x4F4D, 0x7789), (0xFEED, 0x7789))
 ROWS, COLS = 3, 4
 FIXED_KEYS = {(1, 0): "Shift", (2, 2): "Strg", (2, 3): "Alt"}
+# The RP2040 can spend over a second redrawing the TFT after a diagnostic command.
+DIAGNOSTIC_TIMEOUT_MS = 4500
 
 
 class ViaError(RuntimeError):
@@ -216,23 +218,23 @@ class OmniPad:
         return self.capabilities()
 
     def diagnose(self, enabled, *, tester=False):
-        self._exchange((0x07, 0, 0x76, (2 if tester else 1) if enabled else 0))
+        self._exchange((0x07, 0, 0x76, (2 if tester else 1) if enabled else 0), timeout=DIAGNOSTIC_TIMEOUT_MS)
 
     def tester_report(self):
-        reply = self._exchange((0x08, 0, 0x77))
+        reply = self._exchange((0x08, 0, 0x77), timeout=DIAGNOSTIC_TIMEOUT_MS)
         if reply[5] > 6:
             raise ViaError("Ungültiger Tester-Bericht vom OmniPad.")
         entries = tuple(iter_unpack("<BBH", reply[6:6 + 4 * reply[5]]))
         return bool(reply[3]), bool(reply[4]), entries
 
     def test_output(self, output):
-        self._exchange((0x07, 0, 0x78, output))
+        self._exchange((0x07, 0, 0x78, output), timeout=DIAGNOSTIC_TIMEOUT_MS)
 
     def preview_lighting(self, payload):
         self._exchange(bytes((0x07, 0, 0x79, payload is not None)) + (payload or b""))
 
     def detection(self):
-        reply = self._exchange((0x08, 0, 0x70))
+        reply = self._exchange((0x08, 0, 0x70), timeout=DIAGNOSTIC_TIMEOUT_MS)
         if reply[3:7] != b"OMNI" or reply[7] not in (1, 2):
             raise UnsupportedCommand("Der Detect-Inspektor benötigt die passende Firmware.")
         return Detection(
