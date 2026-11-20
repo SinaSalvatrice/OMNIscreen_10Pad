@@ -24,6 +24,8 @@ class ScreenEditor(tk.Frame):
         tools.pack(fill="x", pady=(8, 8))
         for text, kind in (("+ Feld", 0), ("+ Text", 1), ("+ Icon", 2)):
             button(tools, text, lambda k=kind: self.add(k)).pack(side="left", padx=(0, 6))
+        button(tools, "Vorlagen", self.import_builtin).pack(side="right", padx=(0, 6))
+        button(tools, "Baustein einfügen", self.import_component).pack(side="left", padx=(6, 0))
         button(tools, "Layout importieren", self.import_screen).pack(side="right")
         button(tools, "Layout exportieren", self.export_screen).pack(side="right", padx=6)
         workspace = tk.Frame(self, bg=BG)
@@ -278,6 +280,55 @@ class ScreenEditor(tk.Frame):
         self.drag = self.drag_field = None
         if changed is not None and self.selected is not None:
             self.editor.change(lambda p: p["screen"]["fields"].__setitem__(self.selected, changed))
+
+    def import_builtin(self):
+        directory = Path(__file__).resolve().parent.parent / "display_library" / "templates"
+        path = filedialog.askopenfilename(
+            title="Display-Vorlage auswählen", initialdir=str(directory),
+            filetypes=[("OmniScreen Layout", "*.screen.json")], parent=self)
+        if path:
+            try:
+                loaded = validate_screen(json.loads(Path(path).read_text(encoding="utf-8-sig")))
+                self.selected = None
+                self.editor.change(lambda p: p.__setitem__("screen", loaded))
+            except (OSError, KeyError, TypeError, ValueError) as error:
+                messagebox.showerror("Vorlage laden", str(error), parent=self)
+
+    def import_component(self):
+        directory = Path(__file__).resolve().parent.parent / "display_library" / "components"
+        path = filedialog.askopenfilename(
+            title="Display-Baustein einfügen", initialdir=str(directory),
+            filetypes=[("OmniScreen Baustein", "*.screen.json")], parent=self)
+        if not path:
+            return
+        try:
+            source = validate_screen(json.loads(Path(path).read_text(encoding="utf-8-sig")))
+            parts = deepcopy(source["fields"])
+            existing = self.screen["fields"]
+            if not parts:
+                raise ValueError("Der Baustein enthält keine Elemente.")
+            if len(parts) + len(existing) > MAX_FIELDS:
+                raise ValueError(f"Baustein passt nicht: {len(existing)} + {len(parts)} Elemente, maximal {MAX_FIELDS}.")
+            left = min(f["x"] for f in parts)
+            top = min(f["y"] for f in parts)
+            width = max(f["x"] + f["width"] for f in parts) - left
+            height = max(f["y"] + f["height"] for f in parts) - top
+            def collides(x, y):
+                return any(x < f["x"]+f["width"] and x+width > f["x"] and
+                           y < f["y"]+f["height"] and y+height > f["y"]
+                           for f in existing if f["layer"] in (-1, self.editor.layer))
+            candidates = ((x,y) for y in range(8, 241-height, 8)
+                          for x in range(8, 321-width, 8))
+            dest = next(((x,y) for x,y in candidates if not collides(x,y)), None)
+            if dest is None:
+                dest = ((320-width)//2, (240-height)//2)
+            for f in parts:
+                f["x"] += dest[0]-left
+                f["y"] += dest[1]-top
+            self.selected = None
+            self.editor.change(lambda p: p["screen"]["fields"].extend(parts))
+        except (OSError, KeyError, TypeError, ValueError) as error:
+            messagebox.showerror("Baustein einfügen", str(error), parent=self)
 
     def import_screen(self):
         path = filedialog.askopenfilename(filetypes=[("Displaylayout", "*.screen.json"), ("JSON", "*.json")], parent=self)

@@ -1,0 +1,58 @@
+{
+  "schema": "omnipad-screen",
+  "version": 1,
+  "width": 320,
+  "height": 240,
+  "enabled": true,
+  "background": "#10171f",
+  "fields": [
+    {
+      "type": 0,
+      "x": 12,
+      "y": 15,
+      "width": 181,
+      "height": 54,
+      "binding": 0,
+      "key": 0,
+      "layer": -1,
+      "pressed_only": false,
+      "icon": 0,
+      "scale": 1,
+      "foreground": "#f0eee9",
+      "background": "#243341",
+      "text": ""
+    },
+    {
+      "type": 1,
+      "x": 22,
+      "y": 24,
+      "width": 150,
+      "height": 16,
+      "binding": 0,
+      "key": 0,
+      "layer": -1,
+      "pressed_only": false,
+      "icon": 0,
+      "scale": 1,
+      "foreground": "#78bcff",
+      "background": "#243341",
+      "text": "ENCODER"
+    },
+    {
+      "type": 1,
+      "x": 22,
+      "y": 43,
+      "width": 155,
+      "height": 20,
+      "binding": 5,
+      "key": 0,
+      "layer": -1,
+      "pressed_only": false,
+      "icon": 0,
+      "scale": 2,
+      "foreground": "#f0eee9",
+      "background": "#243341",
+      "text": "DISPLAY"
+    }
+  ]
+}
