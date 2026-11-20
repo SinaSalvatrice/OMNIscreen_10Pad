@@ -23,6 +23,7 @@ static int16_t omp_slider_reference = -1;
 static bool omp_qmk_lighting_override;
 static uint8_t omp_qmk_effect;
 static bool omp_native_lighting(uint16_t code, bool pressed);
+static bool omp_device_action(uint16_t code, bool pressed);
 static uint8_t omp_brightness_override[2] = {255, 255};
 static uint16_t omp_macro_position, omp_macro_end, omp_macro_wait;
 static uint16_t omp_macro_timer;
@@ -42,7 +43,7 @@ static void omp_event(uint8_t trigger) {
 }
 
 static void omp_emit(uint16_t code, bool pressed) {
-    if (code <= KC_TRNS || omp_native_lighting(code, pressed)) return;
+    if (code <= KC_TRNS || omp_device_action(code, pressed) || omp_native_lighting(code, pressed)) return;
     uint8_t slot;
     for (slot = 0; slot < ARRAY_SIZE(omp_held_codes); ++slot) {
         if (omp_held_refs[slot] && omp_held_codes[slot] == code) break;
@@ -195,7 +196,8 @@ static void omp_actions_tick(void) {
     for (uint8_t index = 0; index < OMP_KEYS; ++index) {
         omp_key_state_t *s = &omp_keys[index];
         if (s->key.mode != 1) continue;
-        if (s->down && !s->holding && timer_elapsed(s->pressed_at) >= s->key.term &&
+        uint16_t hold_term = index == 11 && s->key.codes[4] == OMP_ACTION_MENU ? 2000u : s->key.term;
+        if (s->down && !s->holding && timer_elapsed(s->pressed_at) >= hold_term &&
             s->key.codes[4] > KC_TRNS) {
             s->holding = true;
             s->held_code = s->key.codes[4];

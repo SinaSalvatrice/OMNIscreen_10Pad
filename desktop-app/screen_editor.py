@@ -4,8 +4,9 @@ from copy import deepcopy
 from pathlib import Path
 import json
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 
+from assignment_panel import AssignmentPanel
 from icons import PIXELS
 from profile import BINDINGS, ICONS, MAX_FIELDS, ascii_text, atomic_json, new_field, validate_screen
 from ui_helpers import BG, PANEL, TEXT, MUTED, ACCENT, Form, ScrollPanel, button, label
@@ -20,7 +21,13 @@ class ScreenEditor(tk.Frame):
         self.drag_field = None
         self.zoom = 2
         self.origin = (22, 22)
-        tools = tk.Frame(self, bg=BG)
+        self.pages = ttk.Notebook(self)
+        self.pages.pack(fill="both", expand=True, pady=(8, 0))
+        layout = tk.Frame(self.pages, bg=BG)
+        self.pages.add(layout, text="Layout")
+        self.assignments = AssignmentPanel(self.pages, editor, display=True)
+        self.pages.add(self.assignments, text="Tasten & Auslöser")
+        tools = tk.Frame(layout, bg=BG)
         tools.pack(fill="x", pady=(8, 8))
         for text, kind in (("+ Feld", 0), ("+ Text", 1), ("+ Icon", 2)):
             button(tools, text, lambda k=kind: self.add(k)).pack(side="left", padx=(0, 6))
@@ -28,7 +35,7 @@ class ScreenEditor(tk.Frame):
         button(tools, "Baustein einfügen", self.import_component).pack(side="left", padx=(6, 0))
         button(tools, "Layout importieren", self.import_screen).pack(side="right")
         button(tools, "Layout exportieren", self.export_screen).pack(side="right", padx=6)
-        workspace = tk.Frame(self, bg=BG)
+        workspace = tk.Frame(layout, bg=BG)
         workspace.pack(fill="both", expand=True)
         left = tk.Frame(workspace, bg=PANEL)
         left.pack(side="left", fill="both", expand=True)
@@ -54,6 +61,7 @@ class ScreenEditor(tk.Frame):
         return self.editor.profile["screen"]
 
     def refresh(self):
+        self.assignments.refresh()
         fields = self.screen["fields"]
         if self.selected is not None and self.selected >= len(fields):
             self.selected = None

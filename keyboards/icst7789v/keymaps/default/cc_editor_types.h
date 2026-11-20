@@ -11,6 +11,12 @@
 #define OMP_SLOT_SIZE 6144
 #define OMP_STORAGE_START 4096
 
+enum {
+    OMP_ACTION_LAYERS = 0x7E40, OMP_ACTION_CUSTOM_SCREEN, OMP_ACTION_MATRIX,
+    OMP_ACTION_MENU, OMP_ACTION_HOME, OMP_ACTION_ENCODER_MODE,
+    OMP_ACTION_HELP, OMP_ACTION_COLORS, OMP_ACTION_EEPROM, OMP_ACTION_NONE,
+};
+
 typedef struct __attribute__((packed)) {
     uint8_t mode; // 0 direct, 1 tap dance, 2 cycle
     uint16_t term;

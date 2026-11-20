@@ -188,7 +188,7 @@ class OmniPad:
             raise UnsupportedCommand("Unbekannte OmniPad-Profilversion.")
         return {"enabled": bool(reply[7]), "max_layers": reply[8],
                 "generation": int.from_bytes(reply[11:15], "little"), "expander": bool(reply[15]),
-                "light_preview": bool(reply[16] & 1)}
+                "light_preview": bool(reply[16] & 1), "device_actions": bool(reply[16] & 2)}
 
     def read_profile(self):
         data = bytearray()

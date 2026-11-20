@@ -10,6 +10,11 @@ from time import monotonic
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog, colorchooser
 
+from assignment_panel import AssignmentPanel
+from bindings import (
+    DISPLAY_ACTIONS, SLOTS, action_name, change_key_mode, layer_choices,
+    requires_device_actions, set_key_action,
+)
 from profile import (
     ROOT, USER_DATA, BASIC_CODES, MAX_LAYERS, MAX_SNIPPETS, MACRO_POOL_SIZE, MATRIX,
     MODES, EFFECTS, SLIDER_MODES, atomic_json, compile_snippet, decode_profile,
@@ -103,6 +108,8 @@ class Editor:
         self.snippet_page = tk.Frame(self.notebook, bg=BG)
         self.detect_page = tk.Frame(self.notebook, bg=BG)
         self.notebook.add(self.key_page, text="Tasten & Regler")
+        self.layer_entries = AssignmentPanel(self.notebook, self)
+        self.notebook.add(self.layer_entries, text="Layer-Zugänge")
         self.notebook.add(self.light_page, text="Beleuchtung")
         self.notebook.add(self.snippet_page, text="Snippet-Bibliothek")
         self.screen_page = ScreenEditor(self.notebook, self)
@@ -403,7 +410,9 @@ class Editor:
             return
         self.refresh_layers()
         self.refresh_key_form()
+        self.refresh_key_shortcuts()
         self.refresh_actions()
+        self.layer_entries.refresh()
         self.draw_keys()
         self.refresh_light_form()
         self.refresh_snippets()
@@ -436,6 +445,7 @@ class Editor:
         self.layer = index
         self.refresh_layers()
         self.refresh_key_form()
+        self.refresh_key_shortcuts()
         self.draw_keys()
         self.refresh_light_form()
         self.refresh_actions()
@@ -487,14 +497,25 @@ class Editor:
         self.key_live = tk.StringVar(value="Regler GP28 · Live-Wert erscheint nach Verbindung mit der neuen Firmware")
         label(left, textvariable=self.key_live, color=MUTED, wraplength=660).pack(
             fill="x", padx=18, pady=(0, 14))
+        self.key_shortcuts = tk.Frame(left, bg=PANEL)
+        self.key_shortcuts.pack(fill="x", padx=14, pady=(0, 12))
         side = ttk.Notebook(workspace, width=320)
         side.pack(side="right", fill="y", padx=(12, 0))
         palette = tk.Frame(side, bg=PANEL)
         self.key_settings = ScrollPanel(side, 320)
         side.add(palette, text="Aktionen")
-        side.add(self.key_settings, text="Taste / Regler")
+        side.add(self.key_settings, text="Details")
+        self.key_palette = palette
         self.key_side = side
-        label(palette, "Suchen und auf eine Taste ziehen", 10, color=MUTED).pack(anchor="w", padx=10, pady=10)
+        self.action_target = tk.StringVar()
+        label(palette, textvariable=self.action_target, size=10, color=MUTED, wraplength=278).pack(
+            fill="x", padx=10, pady=10)
+        self.category = ttk.Combobox(palette, state="readonly",
+                                     values=("Alle Aktionen", "Tasten", "Shortcuts & Medien",
+                                             "Layer", "Display & Gerät", "Snippets"))
+        self.category.current(0)
+        self.category.pack(fill="x", padx=10, pady=(0, 4))
+        self.category.bind("<<ComboboxSelected>>", lambda _: self.refresh_actions())
         self.search = tk.StringVar()
         search = ttk.Entry(palette, textvariable=self.search)
         search.pack(fill="x", padx=10, pady=(0, 4))
@@ -503,8 +524,67 @@ class Editor:
         self.actions = tk.Listbox(palette, height=7, bg=KEY, fg=TEXT, selectbackground="#73503d",
                                    exportselection=False, relief="flat", highlightthickness=0)
         self.actions.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        self.actions.bind("<Double-Button-1>", lambda _: self.choose_action())
-        self.actions.bind("<ButtonRelease-1>", self.drop_action)
+        self.actions.bind("<Return>", lambda _: self.choose_action())
+        self.actions.bind("<ButtonRelease-1>", self.click_action)
+
+    def refresh_key_shortcuts(self):
+        for widget in self.key_shortcuts.winfo_children():
+            widget.destroy()
+        kind, index = self.target
+        if kind != "key":
+            title = "Schieberegler" if kind == "slider" else ("Encoder links", "Encoder rechts")[index]
+            label(self.key_shortcuts, title, size=12).pack(side="left")
+            button(self.key_shortcuts, "Details", lambda: self.key_side.select(self.key_settings)).pack(side="right")
+            self.refresh_action_target()
+            return
+
+        key = self.current_layer["keys"][index]
+        mode = key["mode"]
+        self.action_slot = min(self.action_slot, len(SLOTS[mode]) - 1)
+        bar = tk.Frame(self.key_shortcuts, bg=PANEL)
+        bar.pack(fill="x", pady=(0, 5))
+        label(bar, self.key_name(index), size=12).pack(side="left", padx=(0, 12))
+        for value, title in enumerate(("Direkt", "Multi-Push / Tap Dance", "Durchschalten")):
+            control = button(bar, title, lambda m=value: self.select_key_mode(m))
+            control.pack(side="left", padx=(0, 4))
+            if value == mode:
+                control.state(("disabled",))
+        button(bar, "Details", lambda: self.key_side.select(self.key_settings)).pack(side="right")
+        slots = tk.Frame(self.key_shortcuts, bg=PANEL)
+        slots.pack(fill="x")
+        for slot, name in enumerate(SLOTS[mode]):
+            action = action_name(self.profile, key["codes"][slot])
+            control = tk.Button(slots, text=f"{name}\n{action}", wraplength=105, height=3,
+                                bg=ACCENT if slot == self.action_slot else KEY,
+                                fg=BG if slot == self.action_slot else TEXT, relief="flat",
+                                command=lambda i=slot: self.select_action_slot(i))
+            control.pack(side="left", fill="x", expand=True, padx=(0, 3))
+        self.refresh_action_target()
+
+    def select_key_mode(self, mode):
+        index = self.target[1]
+        self.action_slot = 0
+        self.change(lambda p: change_key_mode(p["layers"][self.layer]["keys"][index], index, mode))
+        self.key_side.select(self.key_palette)
+
+    def select_action_slot(self, slot):
+        self.action_slot = slot
+        self.refresh_key_shortcuts()
+        self.key_side.select(self.key_palette)
+
+    def refresh_action_target(self):
+        kind, index = self.target
+        if kind == "key":
+            key = self.current_layer["keys"][index]
+            caption = f"{self.key_name(index)} · {SLOTS[key['mode']][self.action_slot]}"
+            prior = action_name(self.profile, key["codes"][self.action_slot])
+        elif kind == "encoder":
+            caption = ("Encoder links", "Encoder rechts")[index]
+            prior = action_name(self.profile, self.current_layer["encoders"][index])
+        else:
+            self.action_target.set("Die Regler-Belegung steht unter Details.")
+            return
+        self.action_target.set(f"{caption}\nAktuell · {prior}\nKlick auf eine Aktion zum Belegen.")
 
     def refresh_key_form(self):
         self.key_settings.clear()
@@ -514,20 +594,13 @@ class Editor:
             key = self.current_layer["keys"][index]
             form.title(self.key_name(index))
             form.entry("label", "Displaytext", key["label"])
-            form.choice("mode", "Verhalten", key["mode"], MODES)
-            form.entry("term", "Tap-Dance-Zeitfenster in ms", key["term"], kind=int)
-            names = ["Einzeltipp", "Doppeltipp", "Dreifachtipp", "Vierfachtipp", "Halten"]
-            if key["mode"] == 2:
-                names = ["Schritt 1", "Schritt 2", "Schritt 3", "Schritt 4", "Halten (bei Tap Dance)"]
-            self.action_destination = form.choice("destination", "Ziel für die Aktionsauswahl", self.action_slot, names)
-            self.action_destination.trace_add("write", lambda *_: self.set_action_slot(names))
-            for number, name in enumerate(names):
-                form.entry(f"code{number}", f"{name} · {label_for_code(key['codes'][number])}",
+            if key["mode"] == 1:
+                form.entry("term", "Zeitfenster für Tipps und Halten (ms)", key["term"], kind=int)
+            for number, name in enumerate(SLOTS[key["mode"]]):
+                form.entry(f"code{number}", f"{name} · {action_name(self.profile, key['codes'][number])}",
                            f"0x{key['codes'][number]:04X}", kind="code")
-            form.note("Direkt reagiert beim Drücken. Tap Dance wartet auf weitere Tipps. "
-                      "Durchschalten wählt bei jedem Druck die nächste der vier Aktionen.")
             if index == 11:
-                form.note("Ohne Aktion steuert K0 das Modul wie bisher. Zwei Sekunden halten öffnet immer das Modulmenü.")
+                form.note("Die Standardgesten von K0 stehen im Display-Studio unter Tasten & Auslöser.")
         elif kind == "encoder":
             form.title("Encoder links" if index == 0 else "Encoder rechts")
             form.entry("code", "Aktion", f"0x{self.current_layer['encoders'][index]:04X}", kind="code")
@@ -553,16 +626,17 @@ class Editor:
             button(form.parent, "Live-Wert als Maximum", lambda: self.calibrate("max")).pack(fill="x", padx=14, pady=3)
         form.apply(self.apply_key_form)
 
-    def set_action_slot(self, choices):
-        self.action_slot = choices.index(self.action_destination.get())
-
     def apply_key_form(self):
         try:
             values = self.key_form.values()
             kind, index = self.target
             if kind == "key":
-                key = {"label": values["label"], "mode": values["mode"], "term": values["term"],
-                       "codes": [values[f"code{n}"] for n in range(5)]}
+                key = deepcopy(self.current_layer["keys"][index])
+                key["label"] = values["label"]
+                if "term" in values:
+                    key["term"] = values["term"]
+                for number in range(len(SLOTS[key["mode"]])):
+                    key["codes"][number] = values[f"code{number}"]
                 self.change(lambda p: p["layers"][self.layer]["keys"].__setitem__(index, key))
             elif kind == "encoder":
                 self.change(lambda p: p["layers"][self.layer]["encoders"].__setitem__(index, values["code"]))
@@ -593,12 +667,12 @@ class Editor:
             x, y = 20 + key["x"] * step, 24 + key["y"] * 79
             self.draw_key(("key", index), x, y, key.get("w", 1) * step - 8,
                           key.get("h", 1) * 79 - 8, self.key_name(index),
-                          self.current_layer["keys"][index]["label"], index)
+                          self.key_caption(index), index)
         x = 20 + 4 * step + 12
         for index, title in ((11, "K0"), (10, "Druck")):
             y = 24 if index == 11 else 83
             self.draw_key(("key", index), x, y, 98, 51, title,
-                          self.current_layer["keys"][index]["label"], index)
+                          self.key_caption(index), index)
         for direction, title in enumerate(("↶ Links", "↷ Rechts")):
             self.draw_key(("encoder", direction), x, 142 + direction * 59, 98, 51,
                           title, label_for_code(self.current_layer["encoders"][direction]))
@@ -609,6 +683,13 @@ class Editor:
             value = self.detection.slider_percent
             canvas.create_rectangle(30, slider_y + 45, 30 + (width - 68) * value / 100,
                                      slider_y + 49, fill=ACCENT, outline="")
+
+    def key_caption(self, index):
+        key = self.current_layer["keys"][index]
+        if key["mode"]:
+            assigned = sum(code > 1 for code in key["codes"][:len(SLOTS[key["mode"]])])
+            return f"{MODES[key['mode']]} · {assigned} Aktionen"
+        return key["label"] or action_name(self.profile, key["codes"][0])
 
     def draw_key(self, target, x, y, width, height, title, detail, physical=None):
         down = physical is not None and self.detection and self.detection.mask & (1 << physical)
@@ -630,8 +711,11 @@ class Editor:
         self.target = target
         self.action_slot = 0
         self.refresh_key_form()
+        self.refresh_key_shortcuts()
         if target[0] == "slider":
             self.key_side.select(self.key_settings)
+        else:
+            self.key_side.select(self.key_palette)
         self.draw_keys()
 
     def select_at(self, event):
@@ -648,6 +732,8 @@ class Editor:
         if target[0] == "key":
             menu.add_command(label="Displaytext bearbeiten", command=self.focus_label)
             menu.add_command(label="Im Display-Studio anzeigen", command=self.display_key)
+            menu.add_command(label="Display-Auslöser zuordnen", command=self.display_trigger)
+            menu.add_command(label="Layer-Zugang zuordnen", command=self.layer_trigger)
             menu.add_command(label="Belegung kopieren", command=lambda: self.copy_key())
             if self.clipboard:
                 menu.add_command(label="Belegung einfügen", command=self.paste_key)
@@ -677,43 +763,64 @@ class Editor:
 
     def display_key(self):
         self.notebook.select(self.screen_page)
+        self.screen_page.pages.select(0)
         self.screen_page.add(1, binding=2, key=self.target[1])
+
+    def display_trigger(self):
+        self.notebook.select(self.screen_page)
+        panel = self.screen_page.assignments
+        self.screen_page.pages.select(panel)
+        key = self.current_layer["keys"][self.target[1]]
+        panel.set_selection(self.layer, self.target[1], key["mode"], self.action_slot)
+
+    def layer_trigger(self):
+        self.notebook.select(self.layer_entries)
+        key = self.current_layer["keys"][self.target[1]]
+        self.layer_entries.set_selection(self.layer, self.target[1], key["mode"], self.action_slot)
 
     def refresh_actions(self):
         if not hasattr(self, "actions"):
             return
         query = self.search.get().casefold()
-        entries = list(BASIC_CODES.items())
-        for index, layer in enumerate(self.profile["layers"]):
-            entries.extend([(f"Layer {index + 1} · {layer['name']} wechseln", 0x5200 + index),
-                            (f"Layer {index + 1} · {layer['name']} halten", 0x5220 + index),
-                            (f"Layer {index + 1} · {layer['name']} umschalten", 0x5260 + index)])
-        entries.extend((f"Snippet · {item['name']}", 0x7700 + index) for index, item in enumerate(self.profile["snippets"]))
-        self.action_entries = [(name, code) for name, code in entries if query in name.casefold() or query in f"0x{code:04x}"]
+        keys = [(name, code) for name, code in BASIC_CODES.items() if code < 0xA0 or 224 <= code <= 231]
+        shortcuts = [(name, code) for name, code in BASIC_CODES.items() if code >= 0xA0 and not 224 <= code <= 231]
+        categories = [
+            keys, shortcuts, [(name, code) for code, name in layer_choices(self.profile)],
+            [(name, code) for code, name in DISPLAY_ACTIONS.items()],
+            [(f"Snippet · {item['name']}", 0x7700 + i) for i, item in enumerate(self.profile["snippets"])],
+        ]
+        category = self.category.current()
+        entries = categories[category - 1] if category > 0 else [item for items in categories for item in items]
+        matching = [(name, code) for name, code in entries if query in name.casefold() or query in f"0x{code:04x}"]
+        if matching == getattr(self, "action_entries", None):
+            return
+        self.action_entries = matching
         self.actions.delete(0, "end")
         for name, code in self.action_entries:
-            self.actions.insert("end", f"{name}   ·   0x{code:04X}")
+            self.actions.insert("end", name)
 
-    def choose_action(self, target=None):
-        selected = self.actions.curselection()
-        if not selected:
-            return
-        code = self.action_entries[selected[0]][1]
-        kind, index = target or self.target
+    def choose_action(self, row=None):
+        if row is None:
+            selected = self.actions.curselection()
+            if not selected:
+                return
+            row = selected[0]
+        code = self.action_entries[row][1]
+        kind, index = self.target
         if kind == "key":
             slot = self.action_slot
-            self.change(lambda p: p["layers"][self.layer]["keys"][index]["codes"].__setitem__(slot, code))
+            mode = self.current_layer["keys"][index]["mode"]
+            self.change(lambda p: set_key_action(p["layers"][self.layer]["keys"][index], index, mode, slot, code))
         elif kind == "encoder":
             self.change(lambda p: p["layers"][self.layer]["encoders"].__setitem__(index, code))
         else:
             self.status.set("Die Regleraktionen werden rechts im Regler-Menü eingestellt.")
 
-    def drop_action(self, event):
-        x, y = event.x_root - self.key_canvas.winfo_rootx(), event.y_root - self.key_canvas.winfo_rooty()
-        target = self.target_at(x, y)
-        if target:
-            self.target = target
-            self.choose_action(target)
+    def click_action(self, event):
+        row = self.actions.nearest(event.y)
+        bounds = self.actions.bbox(row) if self.action_entries else None
+        if bounds and bounds[1] <= event.y < bounds[1] + bounds[3]:
+            self.choose_action(row)
 
     def create_lighting(self):
         left = tk.Frame(self.light_page, bg=PANEL)
@@ -1196,6 +1303,11 @@ class Editor:
             messagebox.showinfo("Firmware aktualisieren",
                                 "Das Pad benötigt die erweiterte Firmware für dieses Profil. "
                                 "Dein Entwurf ist lokal gespeichert und kann als Profil exportiert werden.",
+                                parent=self.window)
+            return
+        if requires_device_actions(self.profile) and not self.capabilities.get("device_actions"):
+            messagebox.showinfo("Firmware aktualisieren",
+                                "Dieses Profil verwendet Display-/Geräteaktionen. Bitte die UF2 mit Belegungseditor flashen.",
                                 parent=self.window)
             return
         payload = encode_profile(self.profile)
