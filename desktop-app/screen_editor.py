@@ -440,6 +440,11 @@ class ScreenEditor(tk.Frame):
                 messagebox.showerror("Vorlage laden", str(error), parent=self)
 
     def import_component(self):
+        if self.view_index in (3, 5):
+            messagebox.showinfo("Geschützter Bildschirm",
+                                "Einstellungen und Keytester lassen keine freien Bausteine "
+                                "über ihren Bedienelementen zu.", parent=self)
+            return
         directory = Path(__file__).resolve().parent.parent / "display_library" / "components"
         path = filedialog.askopenfilename(
             title="Display-Baustein einfügen", initialdir=str(directory),
