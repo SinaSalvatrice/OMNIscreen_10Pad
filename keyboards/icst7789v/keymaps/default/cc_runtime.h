@@ -128,11 +128,13 @@ static void cc_activate_layer(uint8_t layer_index) {
 }
 
 static void cc_open_home(void) {
-    // HOME in this design means the DEFAULT layer, not a separate layer map.
-    cc_activate_layer(1);
+    // Home is an actual screen; use the user's configured default layer.
+    uint8_t start_layer = omp_enabled ? omp_profile.default_layer : 1u;
+    cc_activate_layer(start_layer);
     cc_display_mode = true;
+    cc_screen_selection = CC_SCREEN_AUTO;
     cc_home_view = true;
-    cc_preview = 1;
+    cc_preview = start_layer;
     cc_menu_view = false;
     cc_help_view = false;
     cc_color_view = false;
