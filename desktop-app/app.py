@@ -1021,6 +1021,7 @@ class Editor:
         self.zone = next((i for i, name in enumerate(ZONE_NAMES)
                           if choice.startswith(name)), 0)
         self.refresh_light_form()
+        self.refresh_light_live_status()
         self.draw_light_preview()
 
     def lighting_form_values(self):
@@ -1049,8 +1050,10 @@ class Editor:
             text = "Livevorschau am Pad benötigt Firmware 6"
         elif self.tester_page.active or (self.detection and self.detection.enabled):
             text = "Livevorschau pausiert während des Tests"
+        elif self.light_live.get() and self.zone < 5:
+            text = "Matrix-Zonen: PC-Vorschau live · Pad nach „Auf Pad speichern“"
         elif self.light_live.get():
-            text = "Änderungen sofort sichtbar · Übernehmen behält sie im Entwurf"
+            text = "Frame-Vorschau live am Pad · Übernehmen behält sie im Entwurf"
         else:
             text = "Livevorschau am Pad ausgeschaltet"
         if self.light_live_status.get() != text:
