@@ -14,9 +14,9 @@ class LayoutTests(unittest.TestCase):
     def test_default_has_unique_positions_and_stable_zone_bounds(self):
         positions = default_positions()
         self.assertEqual(len(positions), LED_COUNT)
-        self.assertEqual(MAIN_COUNT, 14)
+        self.assertEqual(MAIN_COUNT, 30)
         self.assertEqual(len({tuple(p) for p in positions}), LED_COUNT)
-        self.assertEqual(positions[14][1], 0.11)
+        self.assertEqual(positions[30][1], 0.11)
         self.assertTrue(all(0 <= a <= 1 and 0 <= b <= 1 for a, b in positions))
 
     def test_round_trip_file(self):
@@ -27,7 +27,18 @@ class LayoutTests(unittest.TestCase):
             write_positions(points, target)
             self.assertEqual(read_positions(target), points)
             saved = json.loads(target.read_text(encoding="utf-8"))
-            self.assertEqual(saved["led_count"], 57)
+            self.assertEqual(saved["led_count"], 73)
+
+    def test_migrate_legacy_layout_preserves_43_frame_locations(self):
+        from led_layout import validate_positions
+        points = [[0.23, 0.42] for _ in range(14)] + [
+            [round(0.11 + i * 0.011, 5), round(0.23 + i * 0.01, 5)]
+            for i in range(43)]
+        upgraded = validate_positions({"schema": "omnipad-led-layout", "version": 1,
+                                       "led_count": 57, "positions": points})
+        self.assertEqual(len(upgraded), 73)
+        self.assertEqual(upgraded[30:], points[14:])
+        self.assertNotEqual(upgraded[:30], points[:14])
 
     def test_read_missing_uses_defaults(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -38,7 +49,7 @@ class LayoutTests(unittest.TestCase):
         points.pop()
         with self.assertRaises(ValueError):
             validate_positions({"schema": "omnipad-led-layout", "version": 1,
-                                "led_count": 57, "positions": points})
+                                "led_count": 73, "positions": points})
         points.append([float("nan"), 0.3])
         with self.assertRaises(ValueError):
             validate_positions({"schema": "omnipad-led-layout", "version": 1,
