@@ -83,3 +83,27 @@ damit sie die Tastenabfrage nicht anhalten.
 Die USB-Schnittstelle wird jetzt exklusiv für eine OmniPad-Editor-Instanz reserviert. Ein weiteres Editorfenster kann nicht gleichzeitig auf dieselbe USB-Antwortwarteschlange zugreifen. Bereits laufende ältere Programmversionen oder externe USB-Programme (z. B. VIA) respektieren diese Sperre nicht: Vor dem Test die alten OmniPad-Editorfenster schließen und den aktualisierten Editor neu starten. Bereits gespeicherte Entwürfe bleiben erhalten.
 
 **Wichtig:** „Entwurf gespeichert“ bedeutet nur auf dem PC gespeichert. Erst „Auf Pad speichern“ überträgt und verifiziert den Entwurf. Die neue Prüffunktion liefert den unabhängigen Live-Abgleich.
+
+## GP28 – absolute Windows-Lautstärke
+
+Bisherige `Lauter`/`Leiser`-Tasten sind relative Schritte. Sie können den
+Windows-Wert nicht auf eine bestimmte Reglerposition setzen und erreichen
+deshalb oft schon vor dem Ende des Wegs 100 %.
+
+Für eine echte **0–100-%-Abbildung** in **Tasten & Regler → Schieberegler** den
+Preset **„Lautstärke Windows 0-100 %“** wählen und **Auf Pad speichern**
+anklicken. Das Pad muss dafür die aktualisierte Firmware mit Regler-Modus 5
+verwenden.
+
+Solange die Windows-OmniPad-App läuft und verbunden ist, liest sie die
+Live-Position des GP28-Reglers und setzt die Standard-Wiedergabelautstärke
+über die Windows-Core-Audio-Schnittstelle. Es wird **keine** zusätzliche
+Python-Abhängigkeit und kein Autostart-Hintergrunddienst installiert.
+Die tatsächliche Hardwarekalibrierung `min`/`max` und `reverse` wird
+von der Firmware bereits auf den Live-Prozentwert angewandt. Beim
+Verbindungsaufbau oder Layerwechsel wird die Lautstärke nicht plötzlich
+verändert; erst eine neue Reglerbewegung überträgt einen Wert.
+
+**Ohne laufende/verbundene App bleibt der Modus 5 wirkungslos.** Für
+autonome Steuerung die Voreinstellung **„Lautstärke (relativ)“** verwenden.
+Die Zoom-Voreinstellung bleibt relativ (z. B. Zoom 25–400 % in Anwendungen).

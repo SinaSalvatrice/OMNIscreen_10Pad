@@ -120,7 +120,7 @@ static bool omp_profile_valid(const omp_profile_t *p) {
         p->screen.enabled > 1) return false;
     for (uint8_t layer = 0; layer < p->layer_count; ++layer) {
         const omp_layer_t *l = &p->layers[layer];
-        if (l->name[15] || l->slider.mode > 4 || l->slider.reverse > 1 ||
+        if (l->name[15] || l->slider.mode > 5 || l->slider.reverse > 1 ||
             !l->slider.step || l->slider.deadband > 64 ||
             l->slider.minimum >= l->slider.maximum || l->slider.maximum > 1023) return false;
         for (uint8_t i = 0; i < OMP_KEYS; ++i) {

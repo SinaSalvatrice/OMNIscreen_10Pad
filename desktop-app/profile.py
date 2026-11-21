@@ -21,7 +21,8 @@ PROFILE_SIZE = 8 + MAX_LAYERS * 354 + 4 + MAX_FIELDS * FIELD_STRUCT.size + MAX_S
 MODES = ["Direkt", "Tap Dance", "Durchschalten"]
 EFFECTS = ["Statisch", "Abwechselnd", "Geteilt", "Farbverlauf", "Lauflicht",
            "Atmen", "Komet", "Funkeln", "Regenbogen"]
-SLIDER_MODES = ["Aus", "Tasten pro Schritt", "Main-Helligkeit", "Frame-Helligkeit", "Beide Helligkeiten"]
+SLIDER_MODES = ["Aus", "Tasten pro Schritt", "Main-Helligkeit", "Frame-Helligkeit", "Beide Helligkeiten",
+                "Windows-Lautstärke absolut (App erforderlich)"]
 BINDINGS = ["Text", "Layername", "Tastenbeschriftung", "Reglerwert", "Letzte Taste",
             "Encoder-Modus", "Erkannte Anschläge", "Sensor X", "Sensor Y", "Sensor Z"]
 ICONS = ["Zahnrad", "Musik", "Pfeile", "Herz", "Blitz", "Speichern", "Sonne", "Werkzeug"]
@@ -394,7 +395,7 @@ def encode_profile(profile):
             action(code)
         payload.extend(struct.pack("<2H", *layer["encoders"]))
         slider = layer["slider"]
-        for name, low, high in (("mode", 0, 4), ("deadband", 0, 64), ("step", 1, 255),
+        for name, low, high in (("mode", 0, 5), ("deadband", 0, 64), ("step", 1, 255),
                                 ("min", 0, 1022), ("max", 1, 1023),
                                 ("low", 0, 65535), ("high", 0, 65535)):
             integer(slider[name], low, high, f"Regler {name}")
