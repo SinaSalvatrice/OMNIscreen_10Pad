@@ -1,6 +1,7 @@
 // Runtime actions. Every press keeps its original configuration until release.
 #pragma once
 #include "action.h"
+#include "cc_editor_modifiers.h"
 
 typedef struct {
     bool down, holding;
@@ -70,6 +71,46 @@ static void omp_emit(uint16_t code, bool pressed) {
     } else {
         if (slot == ARRAY_SIZE(omp_held_codes) || --omp_held_refs[slot]) return;
     }
+    // Shortcuts require strong modifiers: QMK clears weak modifiers whenever
+    // another physical key event arrives. This used to turn Undo into plain Z.
+    if (IS_QK_MODS(code)) {
+        const uint8_t key = QK_MODS_GET_BASIC_KEYCODE(code);
+        const uint8_t mods = omp_mod_mask(code);
+        if (pressed) {
+            omp_mod_update(mods, true);
+            if (key != KC_NO) register_code(key);
+        } else {
+            if (key != KC_NO) unregister_code(key);
+            omp_mod_update(mods, false);
+        }
+        return;
+    }
+    if (IS_MODIFIER_KEYCODE(code)) {
+        omp_mod_update(omp_mod_mask(code), pressed);
+        return;
+    }
+
+    // Layer actions should not depend on a synthetic QMK row/column event.
+    // In particular the second Tap Dance slot can enter a layer directly.
+    if (IS_QK_TO(code)) {
+        if (pressed && QK_TO_GET_LAYER(code) < omp_profile.layer_count)
+            layer_move(QK_TO_GET_LAYER(code));
+        return;
+    }
+    if (IS_QK_MOMENTARY(code)) {
+        if (QK_MOMENTARY_GET_LAYER(code) < omp_profile.layer_count) {
+            if (pressed) layer_on(QK_MOMENTARY_GET_LAYER(code));
+            else layer_off(QK_MOMENTARY_GET_LAYER(code));
+        }
+        return;
+    }
+    if (IS_QK_TOGGLE_LAYER(code)) {
+        if (pressed && QK_TOGGLE_LAYER_GET_LAYER(code) < omp_profile.layer_count)
+            layer_invert(QK_TOGGLE_LAYER_GET_LAYER(code));
+        return;
+    }
+
+    // Other QMK keycodes continue using the standard QMK action decoder.
     keyrecord_t record = {
         .event = {.key = {.row = 0, .col = 0}, .pressed = pressed, .time = timer_read(), .type = KEY_EVENT},
     };
@@ -123,6 +164,7 @@ static void omp_release_all(void) {
     omp_tap_active = 0;
     omp_tap_head = omp_tap_tail = 0;
     omp_down_mask = 0;
+    omp_mod_release_all();
 }
 
 static void omp_finish_dance(uint8_t index) {
