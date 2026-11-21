@@ -252,17 +252,23 @@ static void cc_k0_update(bool changed) {
 }
 
 static void cc_encoder_button_action(void) {
-    bool navigation = false;
-    if (omp_enabled && cc_display_mode) {
+    // A user-configured PUSH assignment wins over the built-in display
+    // selection, even when the assignment is a plain key or Tap Dance.
+    // Previously only layer/device keycodes were routed in display mode,
+    // so other programmed double-press actions were silently ignored.
+    bool custom = false;
+    if (omp_enabled && !cc_matrix_test_view && !cc_menu_view) {
         const omp_key_t *key = &omp_profile.layers[cc_active].keys[10];
         uint8_t slots = key->mode == 0 ? 1 : key->mode == 1 ? 5 : 4;
         for (uint8_t i = 0; i < slots; ++i) {
-            uint16_t code = key->codes[i];
-            if ((code >= OMP_ACTION_LAYERS && code <= OMP_ACTION_NONE) ||
-                IS_QK_TO(code) || IS_QK_MOMENTARY(code) || IS_QK_TOGGLE_LAYER(code)) navigation = true;
+            if (key->codes[i] > KC_TRNS) {
+                custom = true;
+                break;
+            }
         }
     }
-    if (omp_keys[10].down || (omp_enabled && !cc_matrix_test_view && !cc_menu_view && (!cc_display_mode || navigation))) {
+    if (omp_keys[10].down || (omp_enabled && !cc_matrix_test_view && !cc_menu_view &&
+                             (!cc_display_mode || custom))) {
         omp_key_event(10, !cc_encoder_button.stable);
     } else if (!cc_encoder_button.stable) cc_encoder_press_action();
 }

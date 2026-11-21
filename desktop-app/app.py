@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog, colorchooser
 
 from assignment_panel import AssignmentPanel
+from profile_audit import action_differences
 from bindings import (
     DISPLAY_ACTIONS, SLOTS, action_name, change_key_mode, layer_choices,
     requires_device_actions, set_key_action,
@@ -90,6 +91,8 @@ class Editor:
         button(toolbar, "Export", self.export_profile).pack(side="left", padx=3)
         self.write_button = button(toolbar, "Auf Pad speichern", self.write_profile)
         self.write_button.pack(side="right", padx=(6, 0))
+        self.verify_button = button(toolbar, "Pad / Entwurf prüfen", self.verify_device_profile)
+        self.verify_button.pack(side="right", padx=6)
         self.connect_button = button(toolbar, "Verbinden", self.connect)
         self.connect_button.pack(side="right", padx=3)
         button(toolbar, "Vom Pad laden", lambda: self.connect(replace=True)).pack(side="right", padx=3)
@@ -400,6 +403,7 @@ class Editor:
                                       text="Neu verbinden" if self.device else "Verbinden")
         testing = hasattr(self, "tester_page") and self.tester_page.active
         self.write_button.configure(state="normal" if self.device and not self.busy() and not testing else "disabled")
+        self.verify_button.configure(state="normal" if self.device and not self.busy() and not testing else "disabled")
         if hasattr(self, "tester_page"):
             self.tester_page.refresh()
         if hasattr(self, "light_live_status"):
@@ -1295,6 +1299,58 @@ class Editor:
         self.draw_keys()
         if self.notebook.select() == str(self.screen_page):
             self.screen_page.draw()
+
+    def verify_device_profile(self):
+        """Compare the live USB profile without modifying either copy."""
+        if not self.device or self.busy() or self.tester_page.active:
+            return
+        try:
+            expected = encode_profile(self.profile)
+        except (ValueError, KeyError, TypeError) as error:
+            messagebox.showerror("Profil prüfen", str(error), parent=self.window)
+            return
+        draft = deepcopy(self.profile)
+        device = self.device
+
+        def check():
+            return device.read_profile(), device.capabilities()
+
+        def show(result):
+            if self.device is not device:
+                return
+            raw, capabilities = result
+            self.on_device = raw
+            self.capabilities = capabilities
+            self.generation = capabilities["generation"]
+            try:
+                actual = decode_profile(raw, draft)
+            except (ValueError, KeyError, TypeError) as error:
+                messagebox.showerror("Profil prüfen", str(error), parent=self.window)
+                return
+            self.active_profile = actual
+            if raw == expected:
+                self.status.set("Pad und Entwurf sind bytegenau identisch")
+                messagebox.showinfo(
+                    "Profil geprüft", "Pad und Entwurf stimmen vollständig überein. "
+                    "Wenn Gesten trotzdem nicht reagieren, ist die Ausführung bzw. "
+                    "Tastenerkennung zu prüfen.", parent=self.window)
+            else:
+                differences = action_differences(draft, actual)
+                shown = "\n".join(differences[:20])
+                if len(differences) > 20:
+                    shown += "\n... {} weitere".format(len(differences) - 20)
+                if not differences:
+                    shown = "Tasten, Layer und Gesten stimmen überein, andere Einstellungen unterscheiden sich."
+                self.status.set("Abweichung: Entwurf und Pad unterscheiden sich")
+                messagebox.showwarning(
+                    "Profilabweichungen",
+                    "Entwurf / Pad:\n\n" + shown +
+                    "\n\nEs wurde nichts überschrieben. "
+                    "Erst 'Auf Pad speichern' überträgt den Entwurf.",
+                    parent=self.window)
+            self.refresh_buttons()
+
+        self.submit(check, show)
 
     def write_profile(self):
         if not self.device or self.busy() or self.tester_page.active:
