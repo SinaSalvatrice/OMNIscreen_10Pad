@@ -164,7 +164,9 @@ With an already configured QMK checkout, after copying `keyboards/icst7789v` int
 qmk compile -kb icst7789v -km default
 ```
 
-This produces a UF2 file (the Windows script copies to `build/ICST7789V.uf2`). To flash, unplug the RP2040-Zero, hold BOOT while plugging USB in, and copy the UF2 to the RPI-RP2 drive.
+The build script publishes the current firmware as `build/OmniPad.uf2`.
+Earlier OmniPad output filenames are moved to `build/Archiv` after a successful build.
+To flash, unplug the RP2040-Zero, hold BOOT while plugging USB in, and copy `OmniPad.uf2` to the RPI-RP2 drive.
 
 ### Optional NeoPixels
 
@@ -299,7 +301,7 @@ VIA uses the actual **firmware USB VID/PID**, so changing only `via.json`
 will NOT make the already-flashed keyboard with `VID_FEED&PID_7789` work.
 
 **Procedure:** Build `build_uf2.bat` locally, flash the newly generated
-`build/ICST7789V.uf2` to RP2040-Zero via BOOTSEL, unplug/replug, then open
+`build/OmniPad.uf2` to RP2040-Zero via BOOTSEL, unplug/replug, then open
 VIA > Settings > Show Design tab and import the new `via.json`. Remove
 stale draft definitions and re-authorize the keyboard if prompted. In Windows
 Device Manager, the firmware should appear with `VID_4F4D&PID_7789`.

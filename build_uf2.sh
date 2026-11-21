@@ -68,13 +68,30 @@ echo "Building $KEYBOARD:$KEYMAP..."
 make SKIP_GIT=1 "$KEYBOARD:$KEYMAP"
 
 UF2="$QMK_HOME/${KEYBOARD}_${KEYMAP}.uf2"
-if [[ ! -f "$UF2" ]]; then
-    echo "ERROR: Build finished but UF2 was not found at: $UF2" >&2
+if [[ ! -s "$UF2" ]]; then
+    echo "ERROR: Build finished without a usable UF2 at: $UF2" >&2
     exit 3
 fi
 
-mkdir -p "$PROJECT_ROOT/build"
-cp -f "$UF2" "$PROJECT_ROOT/build/ICST7789V.uf2"
+build_dir="$PROJECT_ROOT/build"
+mkdir -p "$build_dir"
+published_uf2="$build_dir/OmniPad.uf2"
+temporary_uf2="$(mktemp "$build_dir/.OmniPad.XXXXXXXX")"
+trap 'rm -f -- "$temporary_uf2"' EXIT
+cp -- "$UF2" "$temporary_uf2"
+mv -f -- "$temporary_uf2" "$published_uf2"
+
+# Move old project outputs aside only after the new firmware has been published.
+archive_dir=""
+for old_uf2 in "$build_dir"/ICST7789V.uf2 "$build_dir"/ICST7789V_*.uf2 \
+               "$build_dir"/OmniPad-*.uf2 "$build_dir"/OMNIscreen_10Pad_*.uf2; do
+    [[ -f "$old_uf2" ]] || continue
+    if [[ -z "$archive_dir" ]]; then
+        mkdir -p "$build_dir/Archiv"
+        archive_dir="$(mktemp -d "$build_dir/Archiv/UF2-XXXXXXXX")"
+    fi
+    mv -- "$old_uf2" "$archive_dir/"
+done
 
 echo
-echo "SUCCESS: $PROJECT_ROOT/build/ICST7789V.uf2"
+echo "SUCCESS: $published_uf2"

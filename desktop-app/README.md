@@ -59,8 +59,8 @@ Ab Firmware 6 setzt **Encoder-Taster und K0 gleichzeitig fünf Sekunden halten**
 die QMK-/VIA-Belegung und beide OmniPad-Profilspeicher auf Werkseinstellungen zurück.
 Das Pad startet neu. Vor Ablauf der fünf Sekunden loslassen, um abzubrechen.
 Die zuweisbare Aktion **Clear EEPROM …** öffnet eine Bestätigung auf dem Pad.
-Ein neuer Druck auf den Encoder bestätigt, K0 bricht ab. Display- und Geräteaktionen
-benötigen den Build `OmniPad-V6-GPIO-Belegungseditor.uf2`.
+Ein neuer Druck auf den Encoder bestätigt, K0 bricht ab. Die aktuelle Firmware
+mit Display- und Geräteaktionen liegt nach dem Build als `build/OmniPad.uf2` vor.
 
 ## Gerätespeicher
 
