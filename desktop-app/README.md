@@ -83,3 +83,25 @@ damit sie die Tastenabfrage nicht anhalten.
 Die USB-Schnittstelle wird jetzt exklusiv für eine OmniPad-Editor-Instanz reserviert. Ein weiteres Editorfenster kann nicht gleichzeitig auf dieselbe USB-Antwortwarteschlange zugreifen. Bereits laufende ältere Programmversionen oder externe USB-Programme (z. B. VIA) respektieren diese Sperre nicht: Vor dem Test die alten OmniPad-Editorfenster schließen und den aktualisierten Editor neu starten. Bereits gespeicherte Entwürfe bleiben erhalten.
 
 **Wichtig:** „Entwurf gespeichert“ bedeutet nur auf dem PC gespeichert. Erst „Auf Pad speichern“ überträgt und verifiziert den Entwurf. Die neue Prüffunktion liefert den unabhängigen Live-Abgleich.
+
+## Layerverwaltung
+
+Im Tab **Layer verwalten** stehen alle Layer als Tabelle. Dort können Layer
+hinzugefügt, dupliziert, umbenannt, eingefärbt, nach oben/unten verschoben,
+als Startlayer festgelegt oder nach Bestätigung gelöscht werden. Dasselbe
+ist über einen Rechtsklick auf die Layerreiter möglich. Namen sind
+maximal 15 Zeichen lang und müssen nach Darstellung auf dem RP2040 eindeutig
+sein. Die Firmware unterstützt 1 bis 12 Layer.
+
+Bei einer Verschiebung passt der Editor die numerischen TO/MO/TG-Layerziele
+in Tasten (einschließlich Tap Dance), Encoder, Schieberegler und Snippets,
+den Startlayer sowie den Gültigkeitslayer aller Displayelemente gemeinsam an.
+
+Beim Löschen werden Layerverweise auf den entfernten Layer bewusst zu
+**Keine Aktion** (nicht automatisch auf einen anderen Layer!), und nur auf
+dem entfernten Layer sichtbare Displayelemente werden entfernt. Vorher zeigt
+eine Bestätigung die Anzahl der betroffenen Verweise/Elemente. Andere
+Layerverweise werden auf ihre neuen Nummern umgestellt. Der letzte Layer
+lässt sich nicht löschen. Alle Änderungen sind zunächst nur Entwurf;
+die globale Rückgängig-Funktion kann sie widerrufen. **Auf Pad speichern**
+überträgt das neue Profil; ein Flash ist für reine Layeränderungen nicht nötig.
