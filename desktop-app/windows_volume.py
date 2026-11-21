@@ -1,5 +1,3 @@
-[Reading 108 lines from start (total: 108 lines, 0 remaining)]
-
 """Windows Core Audio master volume (no third-party Python dependencies).
 
 The OmniPad firmware can emit relative media-volume keys but cannot query the
