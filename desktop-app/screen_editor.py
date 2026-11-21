@@ -8,7 +8,8 @@ from tkinter import filedialog, messagebox, ttk
 
 from assignment_panel import AssignmentPanel
 from icons import PIXELS
-from profile import BINDINGS, ICONS, MAX_FIELDS, ascii_text, atomic_json, new_field, validate_screen
+from profile import (BINDINGS, ICONS, MAX_FIELDS, SCREEN_VIEWS, SCREEN_PRESETS,
+                     ascii_text, atomic_json, new_field, validate_screen, default_screen_themes)
 from ui_helpers import BG, PANEL, TEXT, MUTED, ACCENT, Form, ScrollPanel, button, label
 
 
@@ -17,6 +18,8 @@ class ScreenEditor(tk.Frame):
         super().__init__(parent, bg=BG)
         self.editor = editor
         self.selected = None
+        self.view_index = 2  # Layerdetails: backward-compatible existing custom screen
+        self.visible_ids = []
         self.drag = None
         self.drag_field = None
         self.zoom = 2
@@ -27,6 +30,15 @@ class ScreenEditor(tk.Frame):
         self.pages.add(layout, text="Layout")
         self.assignments = AssignmentPanel(self.pages, editor, display=True)
         self.pages.add(self.assignments, text="Tasten & Auslöser")
+        selector = tk.Frame(layout, bg=PANEL)
+        selector.pack(fill="x", pady=(8, 4))
+        label(selector, "Bildschirm", color=MUTED).pack(side="left", padx=(12, 6))
+        self.view_choice = ttk.Combobox(selector, state="readonly", width=20, values=SCREEN_VIEWS)
+        self.view_choice.current(self.view_index)
+        self.view_choice.pack(side="left", padx=(0, 12), pady=8)
+        self.view_choice.bind("<<ComboboxSelected>>", self.change_view)
+        self.pool_status = tk.StringVar()
+        label(selector, textvariable=self.pool_status, color=MUTED).pack(side="right", padx=12)
         tools = tk.Frame(layout, bg=BG)
         tools.pack(fill="x", pady=(8, 8))
         for text, kind in (("+ Feld", 0), ("+ Text", 1), ("+ Icon", 2)):
@@ -60,28 +72,56 @@ class ScreenEditor(tk.Frame):
     def screen(self):
         return self.editor.profile["screen"]
 
+    @property
+    def theme(self):
+        themes = self.screen.get("themes", default_screen_themes())
+        return themes[self.view_index]
+
+    def is_visible_field(self, field):
+        return field.get("view", 2) == self.view_index
+
+    def change_view(self, _event=None):
+        index = self.view_choice.current()
+        if index < 0 or index == self.view_index:
+            return
+        self.view_index = index
+        self.selected = None
+        self.drag = self.drag_field = None
+        self.refresh()
+
     def refresh(self):
         self.assignments.refresh()
         fields = self.screen["fields"]
-        if self.selected is not None and self.selected >= len(fields):
+        self.view_choice.current(self.view_index)
+        self.visible_ids = [i for i, field in enumerate(fields) if self.is_visible_field(field)]
+        if self.selected is not None and self.selected not in self.visible_ids:
             self.selected = None
+        self.pool_status.set(
+            f"{len(fields)}/{MAX_FIELDS} Zusatzelemente gesamt · "
+            f"{len(self.visible_ids)} auf {SCREEN_VIEWS[self.view_index]}")
         self.listbox.delete(0, "end")
-        for index, field in enumerate(fields):
+        for visible_index, index in enumerate(self.visible_ids):
+            field = fields[index]
             title = ["Feld", "Text", "Icon"][field["type"]]
-            self.listbox.insert("end", f"{index + 1}  {title}  {field['text'] if field['type'] == 1 else ''}")
+            self.listbox.insert("end", f"{visible_index + 1}  {title}  {field['text'] if field['type'] == 1 else ''}")
         if self.selected is not None:
-            self.listbox.selection_set(self.selected)
+            self.listbox.selection_set(self.visible_ids.index(self.selected))
         self.inspector.clear()
         self.form = form = Form(self.inspector.content)
         if self.selected is None:
-            form.title("Displaylayout")
-            form.check("enabled", "Eigenes Layout auf dem Pad anzeigen", self.screen["enabled"])
-            form.color("background", "Hintergrundfarbe", self.screen["background"])
-            form.note("Die Vorschau verwendet den ausgewählten Layer und die Live-Werte des Pads. "
-                      "Layouts und ihre Abhängigkeiten werden mit dem Profil aufs Pad übertragen.")
-            form.apply(self.apply)
-            button(form.parent, "Standardlayout einsetzen", self.standard_layout).pack(
-                fill="x", padx=14, pady=5)
+            form.title(SCREEN_VIEWS[self.view_index])
+            form.choice("preset", "Stilvorlage", self.theme["preset"], SCREEN_PRESETS)
+            form.color("theme_background", "Hintergrund", self.theme["background"])
+            form.color("theme_accent", "Akzentfarbe", self.theme["accent"])
+            form.check("enabled", "Zusatzelemente am Pad aktivieren", self.screen["enabled"])
+            form.note("Jeder Bildschirm hat eigene Farben und eine eigene Stilvorlage. "
+                      "Home, Layerindex, Navigation und Layerdetails können zusätzliche "
+                      "Texte und Icons erhalten. Die Bedienelemente in Einstellungen und "
+                      "Keytester bleiben aus Sicherheitsgründen geschützt.")
+            form.apply(self.apply, "Bildschirmdesign übernehmen")
+            if self.view_index not in (3, 5):
+                button(form.parent, "Zusatzelemente für diesen Bildschirm einsetzen",
+                       self.standard_layout).pack(fill="x", padx=14, pady=5)
         else:
             field = fields[self.selected]
             form.title(["Feld", "Text", "Icon"][field["type"]])
@@ -117,14 +157,20 @@ class ScreenEditor(tk.Frame):
 
     def select_list(self, _):
         chosen = self.listbox.curselection()
-        if chosen and chosen[0] != self.selected:
-            self.select(chosen[0])
+        if chosen and self.visible_ids[chosen[0]] != self.selected:
+            self.select(self.visible_ids[chosen[0]])
 
     def apply(self):
         try:
             values = self.form.values()
             if self.selected is None:
-                self.editor.change(lambda p: p["screen"].update(values))
+                def update_theme(p):
+                    themes = p["screen"].setdefault("themes", default_screen_themes())
+                    themes[self.view_index].update(
+                        preset=values["preset"], background=values["theme_background"],
+                        accent=values["theme_accent"])
+                    p["screen"]["enabled"] = values["enabled"]
+                self.editor.change(update_theme)
             else:
                 if "scale" in values:
                     values["scale"] += 1
@@ -136,32 +182,46 @@ class ScreenEditor(tk.Frame):
             messagebox.showerror("Displaylayout", str(error), parent=self)
 
     def add(self, kind, *, binding=0, key=0):
+        if self.view_index in (3, 5):
+            messagebox.showinfo("Geschützter Bildschirm",
+                                "Einstellungen und Keytester erlauben Farb- und Stiländerungen, "
+                                "keine frei platzierten Elemente über funktionalen Bedienelementen.",
+                                parent=self)
+            return
         if len(self.screen["fields"]) >= MAX_FIELDS:
             messagebox.showerror("Displaylayout", f"Bis zu {MAX_FIELDS} Elemente passen auf das Pad.", parent=self)
             return
         field = new_field(kind)
-        field.update(binding=binding, key=key)
+        field.update(binding=binding, key=key, view=self.view_index)
         self.selected = len(self.screen["fields"])
-        self.editor.change(lambda p: p["screen"]["fields"].append(field))
+        def add_field(p):
+            p["screen"]["enabled"] = True
+            p["screen"]["fields"].append(field)
+        self.editor.change(add_field)
 
     def standard_layout(self):
-        fields = []
-        background = new_field(0)
-        background.update(x=0, y=0, width=320, height=34, background="#324351")
-        fields.append(background)
-        title = new_field(1)
-        title.update(x=12, y=8, width=250, height=22, binding=1, scale=2)
-        fields.append(title)
-        for index in range(10):
-            text = new_field(1)
-            text.update(x=14 + (index % 4) * 76, y=54 + (index // 4) * 44,
-                        width=72, height=24, binding=2, key=index, scale=1)
-            fields.append(text)
-        slider = new_field(1)
-        slider.update(x=14, y=208, width=280, height=20, binding=3, scale=2)
-        fields.append(slider)
+        if self.view_index in (3, 5):
+            return
+        # The firmware already renders complete usable native screens. Only
+        # lightweight decorations consume the shared 16-element overlay pool.
+        headers = ("OMNIPAD", "LAYERS", "LAYER", "SETTINGS", "NAVIGATION", "KEYTESTER")
+        existing = [field for field in self.screen["fields"]
+                    if not self.is_visible_field(field)]
+        if len(existing) + 2 > MAX_FIELDS:
+            messagebox.showwarning("Display", "Nicht genügend freie Zusatzelemente.", parent=self)
+            return
+        bar = new_field(0)
+        bar.update(view=self.view_index, x=8, y=31, width=304, height=3,
+                   background=self.theme["accent"])
+        caption = new_field(1)
+        caption.update(view=self.view_index, x=16, y=37, width=265, height=20,
+                       text=headers[self.view_index], scale=2,
+                       foreground=self.theme["accent"])
         self.selected = None
-        self.editor.change(lambda p: p["screen"].update(enabled=True, fields=fields))
+        def apply(p):
+            p["screen"]["fields"] = existing + [bar, caption]
+            p["screen"]["enabled"] = True
+        self.editor.change(apply)
 
     def duplicate(self):
         if self.selected is None or len(self.screen["fields"]) >= MAX_FIELDS:
@@ -212,6 +272,68 @@ class ScreenEditor(tk.Frame):
             return str(detection.sensor_xyz[binding - 7] if detection else 0)
         return field["text"]
 
+    def draw_native_preview(self, canvas, ox, oy, z):
+        theme = self.theme
+        bg, accent = theme["background"], theme["accent"]
+        dark = "#000000" if theme["preset"] == 1 else "#23303b"
+        x = lambda n: ox + n * z
+        y = lambda n: oy + n * z
+        def rect(a,b,w,h,color):
+            canvas.create_rectangle(x(a),y(b),x(a+w),y(b+h),fill=color,outline="")
+        def text(a,b,value,size=10,color="#e9eef4"):
+            canvas.create_text(x(a),y(b),anchor="nw",text=value,
+                               fill=color,font=("Consolas",max(7,round(size*z/1.4)),"bold"))
+        rect(0,0,320,240,bg)
+        rect(0,0,320,27,dark)
+        rect(0,0,320,2,accent)
+        rect(0,216,320,24,dark)
+        text(7,8,"CC / OMNIPAD",9)
+        text(12,226,"K0 MODE  /  HOLD MENU",8,accent)
+        view = self.view_index
+        layers = self.editor.profile["layers"]
+        name = self.editor.current_layer["name"]
+        if view == 0:
+            rect(12,43,296,133,dark)
+            rect(12,43,296,5,accent)
+            text(27,65,"OMNIPAD",24,accent)
+            text(27,113,"ACTIVE",10)
+            text(27,136,name[:15],16)
+            text(18,190,"ENC TURN: LAYERS",10)
+        elif view == 1:
+            text(10,36,"LAYER INDEX",16,accent)
+            for i,layer in enumerate(layers[:12]):
+                cx,cy=10+(i//6)*152,70+(i%6)*23
+                rect(cx,cy,146,21,accent if i==self.editor.layer else dark)
+                text(cx+6,cy+4,layer["name"][:15],8)
+        elif view == 2:
+            rect(7,33,109,171,dark)
+            rect(7,33,109,4,accent)
+            text(13,151,name[:12],15)
+            text(12,192,"ACTIVE LAYER",8,accent)
+            for i,key in enumerate(self.editor.current_layer["keys"][:10]):
+                cx,cy=124+(i%4)*46,36+(i//4)*48
+                rect(cx,cy,43,43,dark)
+                text(cx+3,cy+6,f"K{i+1}",8,accent)
+                text(cx+3,cy+22,key["label"][:5],8)
+        elif view == 3:
+            rect(7,33,109,171,dark)
+            text(17,64,"MODULE",15,accent)
+            for i,title in enumerate(("DISPLAY","ENCODER","HOME","MATRIX","HELP","COLORS")):
+                rect(125,34+i*29,187,25,accent if i==0 else dark)
+                text(141,41+i*29,title,9)
+        elif view == 4:
+            rect(16,50,288,132,dark)
+            rect(16,50,288,5,accent)
+            text(26,70,"NAVIGATION",16,accent)
+            text(26,113,name[:15],15)
+            text(26,154,"TURN SELECT  PUSH ENTER",9)
+        else:
+            text(13,38,"KEY TESTER",17,accent)
+            for i in range(10):
+                rect(17+(i%5)*59,85+(i//5)*48,53,40,dark)
+                text(25+(i%5)*59,95+(i//5)*48,f"K{i+1}",10)
+            text(14,196,"PUSH / MATRIX",10,accent)
+
     def draw(self):
         canvas = self.canvas
         canvas.delete("all")
@@ -220,10 +342,10 @@ class ScreenEditor(tk.Frame):
         self.origin = ((width - 320 * self.zoom) / 2, (height - 240 * self.zoom) / 2)
         ox, oy = self.origin
         z = self.zoom
-        canvas.create_rectangle(ox, oy, ox + 320 * z, oy + 240 * z, fill=self.screen["background"], outline="#55606c")
+        self.draw_native_preview(canvas, ox, oy, z)
         for index, stored in enumerate(self.screen["fields"]):
             field = self.drag_field if self.drag_field is not None and index == self.selected else stored
-            if field["layer"] not in (-1, self.editor.layer):
+            if not self.is_visible_field(field) or field["layer"] not in (-1, self.editor.layer):
                 continue
             x, y = ox + field["x"] * z, oy + field["y"] * z
             right, bottom = x + field["width"] * z, y + field["height"] * z
@@ -260,7 +382,7 @@ class ScreenEditor(tk.Frame):
         if selected is None:
             for index in reversed(range(len(fields))):
                 f = fields[index]
-                if f["layer"] in (-1, self.editor.layer) and f["x"] <= x <= f["x"] + f["width"] and f["y"] <= y <= f["y"] + f["height"]:
+                if self.is_visible_field(f) and f["layer"] in (-1, self.editor.layer) and f["x"] <= x <= f["x"] + f["width"] and f["y"] <= y <= f["y"] + f["height"]:
                     selected = index
                     break
         self.select(selected)
@@ -289,6 +411,21 @@ class ScreenEditor(tk.Frame):
         if changed is not None and self.selected is not None:
             self.editor.change(lambda p: p["screen"]["fields"].__setitem__(self.selected, changed))
 
+    def import_to_view(self, loaded):
+        if self.view_index in (3, 5):
+            raise ValueError("Geschützte Menüs können keine freien Elemente übernehmen.")
+        other = [field for field in self.screen["fields"] if not self.is_visible_field(field)]
+        new = deepcopy(loaded["fields"])
+        if len(other) + len(new) > MAX_FIELDS:
+            raise ValueError(f"Über 16 Zusatzelemente. Frei: {MAX_FIELDS-len(other)}.")
+        for field in new:
+            field["view"] = self.view_index
+        self.selected = None
+        def apply(p):
+            p["screen"]["fields"] = other + new
+            p["screen"]["enabled"] = True
+        self.editor.change(apply)
+
     def import_builtin(self):
         directory = Path(__file__).resolve().parent.parent / "display_library" / "templates"
         path = filedialog.askopenfilename(
@@ -298,7 +435,7 @@ class ScreenEditor(tk.Frame):
             try:
                 loaded = validate_screen(json.loads(Path(path).read_text(encoding="utf-8-sig")))
                 self.selected = None
-                self.editor.change(lambda p: p.__setitem__("screen", loaded))
+                self.import_to_view(loaded)
             except (OSError, KeyError, TypeError, ValueError) as error:
                 messagebox.showerror("Vorlage laden", str(error), parent=self)
 
@@ -312,6 +449,8 @@ class ScreenEditor(tk.Frame):
         try:
             source = validate_screen(json.loads(Path(path).read_text(encoding="utf-8-sig")))
             parts = deepcopy(source["fields"])
+            for part in parts:
+                part["view"] = self.view_index
             existing = self.screen["fields"]
             if not parts:
                 raise ValueError("Der Baustein enthält keine Elemente.")
@@ -334,7 +473,10 @@ class ScreenEditor(tk.Frame):
                 f["x"] += dest[0]-left
                 f["y"] += dest[1]-top
             self.selected = None
-            self.editor.change(lambda p: p["screen"]["fields"].extend(parts))
+            def append_parts(p):
+                p["screen"]["fields"].extend(parts)
+                p["screen"]["enabled"] = True
+            self.editor.change(append_parts)
         except (OSError, KeyError, TypeError, ValueError) as error:
             messagebox.showerror("Baustein einfügen", str(error), parent=self)
 
@@ -344,7 +486,7 @@ class ScreenEditor(tk.Frame):
             try:
                 screen = validate_screen(json.loads(Path(path).read_text(encoding="utf-8-sig")))
                 self.selected = None
-                self.editor.change(lambda p: p.__setitem__("screen", screen))
+                self.import_to_view(screen)
             except (OSError, KeyError, TypeError, ValueError) as error:
                 messagebox.showerror("Displaylayout", str(error), parent=self)
 
@@ -353,6 +495,8 @@ class ScreenEditor(tk.Frame):
                                            filetypes=[("Displaylayout", "*.screen.json")], parent=self)
         if path:
             try:
-                atomic_json(path, self.screen)
+                export = deepcopy(self.screen)
+                export["fields"] = [field for field in export["fields"] if self.is_visible_field(field)]
+                atomic_json(path, export)
             except OSError as error:
                 messagebox.showerror("Displaylayout", str(error), parent=self)
