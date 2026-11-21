@@ -1,5 +1,4 @@
-// OMNIscreen 10Pad: 14 main LEDs + 43 independently controlled Frame LEDs.
-// Single WS2812/SK6812 data line on GP29, indexed 0..56.
+// OMNIscreen 10Pad: 30 matrix LEDs plus original 43 Frame LEDs, GP29, 0..72.
 // Main: QMK RGBLight effects or legacy custom one/two-color palette (VIA channel 0 ids 1-4).
 // Frame: own enabled/effect/brightness/colors/speed/direction (VIA channel 0 ids 5-11).
 #pragma once
@@ -36,10 +35,14 @@ typedef struct __attribute__((packed)) {
     uint8_t frame_sat2;
     uint8_t frame_speed;
     uint8_t frame_reverse;
+    uint8_t zone_magic[4];
+    omp_zone_t matrix_zones[OMP_LAYERS][5]; // Keys, Slider, Encoder, K0, Display
+    uint8_t zone_map[CC_RGB_MAIN_LED_COUNT];
 } cc_rgb_settings_t;
 
+_Static_assert(sizeof(omp_zone_t) == 10, "Zone storage format");
 _Static_assert(sizeof(cc_rgb_settings_t) == EECONFIG_USER_DATA_SIZE, "RGB settings / EEPROM size mismatch");
-_Static_assert(CC_RGB_MAIN_LED_COUNT + CC_RGB_FRAME_LED_COUNT == RGBLIGHT_LED_COUNT, "LED zones must total 57");
+_Static_assert(CC_RGB_MAIN_LED_COUNT + CC_RGB_FRAME_LED_COUNT == RGBLIGHT_LED_COUNT, "Matrix plus Frame must total 73");
 
 static const cc_rgb_settings_t cc_rgb_defaults = {
     0xCC, 0, 14, 255, 150, 255, 128, 2,
@@ -49,6 +52,36 @@ static cc_rgb_settings_t cc_rgb = {
     0xCC, 0, 14, 255, 150, 255, 128, 2,
     1, CC_FRAME_EFFECT_SOLID, 24, 14, 255, 150, 255, 128, 0
 };
+static uint8_t cc_default_matrix_zone(uint8_t index) {
+    uint8_t row = index / 5u, col = index % 5u;
+    if ((row == 0 && col <= 3) || (row == 1 && col <= 2)) return 4; // display
+    if (col == 4 && row <= 1) return 2; // encoder
+    if ((row == 1 && col == 3) || (row == 2 && col == 4)) return 3; // K0
+    if (col == 4 && row >= 3) return 1; // slider
+    return 0; // keys
+}
+static void cc_matrix_zones_reset(void) {
+    memcpy(cc_rgb.zone_magic, "MZ01", 4);
+    for (uint8_t i = 0; i < CC_RGB_MAIN_LED_COUNT; ++i)
+        cc_rgb.zone_map[i] = cc_default_matrix_zone(i);
+    for (uint8_t layer = 0; layer < OMP_LAYERS; ++layer) {
+        for (uint8_t zone = 0; zone < 5; ++zone) {
+            omp_zone_t *z = &cc_rgb.matrix_zones[layer][zone];
+            z->effect = 0; z->brightness = 24; z->speed = 128; z->flags = 1;
+            z->color_a = 0xCC2B; z->color_b = 0x74F7;
+            z->triggers = 7; z->duration = 50;
+        }
+    }
+}
+static bool cc_matrix_zones_valid(void) {
+    if (memcmp(cc_rgb.zone_magic, "MZ01", 4)) return false;
+    for (uint8_t i = 0; i < CC_RGB_MAIN_LED_COUNT; ++i)
+        if (cc_rgb.zone_map[i] >= 5) return false;
+    for (uint8_t layer = 0; layer < OMP_LAYERS; ++layer)
+        for (uint8_t zone = 0; zone < 5; ++zone)
+            if (!omp_zone_valid(&cc_rgb.matrix_zones[layer][zone])) return false;
+    return true;
+}
 static bool cc_main_dirty = true;
 static bool cc_frame_dirty = true;
 static uint8_t cc_main_phase = 0;
@@ -83,10 +116,12 @@ static void cc_rgb_load(void) {
     } else {
         cc_rgb = cc_rgb_defaults;
     }
+    // Original 17 Frame/Main bytes are unchanged on migration.
+    if (!cc_matrix_zones_valid()) cc_matrix_zones_reset();
     if (cc_rgb.frame_brightness > RGBLIGHT_LIMIT_VAL) {
         cc_rgb.frame_brightness = RGBLIGHT_LIMIT_VAL;
     }
-    // Built-in QMK RGB effects must never write to LED 14..56.
+    // Built-in QMK RGB effects must never write to LED 30..72.
     rgblight_set_effect_range(0, CC_RGB_MAIN_LED_COUNT);
     cc_main_dirty = true;
     cc_frame_dirty = true;
@@ -254,6 +289,43 @@ static bool cc_tester_preview_leds(void) {
 // VIA channel 0 preserves the previous four custom main-palette IDs (1..4).
 // New Frame values use 5..11, so existing saved VIA definitions remain valid.
 void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
+    // 0x7A: read/write matrix zone or 15 map entries. 0x7B: persist.
+    if (length == 32 && data[1] == 0 &&
+        (data[0] == id_custom_get_value || data[0] == id_custom_set_value)) {
+        bool get = data[0] == id_custom_get_value;
+        if (data[2] == 0x7A) {
+            if (data[3] < OMP_LAYERS && data[4] < 5) {
+                omp_zone_t *z = &cc_rgb.matrix_zones[data[3]][data[4]];
+                if (get) { memcpy(&data[5], z, sizeof(*z)); return; }
+                omp_zone_t candidate;
+                memcpy(&candidate, &data[5], sizeof(candidate));
+                if (omp_zone_valid(&candidate)) { *z = candidate; return; }
+            } else if (data[3] == 255 && data[4] < 2) {
+                uint8_t *map = cc_rgb.zone_map + data[4] * 15u;
+                if (get) { memcpy(&data[5], map, 15); return; }
+                bool valid = true;
+                for (uint8_t i = 0; i < 15; ++i) if (data[5 + i] >= 5) valid = false;
+                if (valid) { memcpy(map, &data[5], 15); return; }
+            }
+            data[0] = id_unhandled;
+            return;
+        }
+        if (data[2] == 0x7B) {
+            if (get) {
+                memcpy(&data[3], "MZ01", 4);
+                data[7] = 5;
+                data[8] = CC_RGB_MAIN_LED_COUNT;
+                data[9] = CC_RGB_FRAME_LED_COUNT;
+                return;
+            }
+            if (data[3] == 1 && cc_matrix_zones_valid()) {
+                eeconfig_update_user_datablock(&cc_rgb, 0, sizeof(cc_rgb));
+                return;
+            }
+            data[0] = id_unhandled;
+            return;
+        }
+    }
     if (omp_command(data, length)) return;
     if (cc_detect_via_snapshot(data, length)) return;
     if (length < 2 || data[1] != id_custom_channel) {
