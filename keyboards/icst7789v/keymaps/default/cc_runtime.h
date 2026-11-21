@@ -190,6 +190,12 @@ static void cc_background(void) {
     lcd_fill(0, 0, LCD_W, 27, panel);
     lcd_fill(0, 216, LCD_W, 24, panel);
     lcd_fill(0, 0, LCD_W, 2, cc_view_accent());
+    if (cc_view_preset() == 2) {
+        // Spectrum: three restrained color rails. Style affects only visuals.
+        lcd_fill(0, 2, LCD_W / 3u, 3, cc_view_accent());
+        lcd_fill(LCD_W / 3u, 2, LCD_W / 3u, 3, C_CYAN);
+        lcd_fill((LCD_W / 3u) * 2u, 2, LCD_W - (LCD_W / 3u) * 2u, 3, C_YELLOW);
+    }
     cc_draw_text(7, 9, "CC / OMNIPAD", 1, C_WHITE);
     cc_draw_text(265, 9, cc_display_mode ? "DISP" : "ENC", 1,
                  cc_display_mode ? cc_view_accent() : C_YELLOW);
@@ -471,10 +477,10 @@ static void cc_matrix_adxl_widget(void) {
 static void cc_matrix_test_screen(void) {
     if (cc_matrix_full_redraw) {
         cc_background();
-        lcd_fill(7, 33, 109, 171, 0x2186);
-        lcd_fill(7, 33, 109, 4, C_CYAN);
+        lcd_fill(7, 33, 109, 171, cc_view_preset() == 1 ? 0x0000 : 0x2186);
+        lcd_fill(7, 33, 109, 4, cc_view_accent());
         cc_draw_text(13, 55, "MATRIX", 2, C_WHITE);
-        cc_draw_text(13, 72, "4-4-2", 1, C_CYAN);
+        cc_draw_text(13, 72, "4-4-2", 1, cc_view_accent());
 #if CC_PCF8575_MATRIX
         char pcf_label[18];
         if (cc_pcf8575_online()) {
