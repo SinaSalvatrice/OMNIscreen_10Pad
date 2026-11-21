@@ -107,3 +107,30 @@ verändert; erst eine neue Reglerbewegung überträgt einen Wert.
 **Ohne laufende/verbundene App bleibt der Modus 5 wirkungslos.** Für
 autonome Steuerung die Voreinstellung **„Lautstärke (relativ)“** verwenden.
 Die Zoom-Voreinstellung bleibt relativ (z. B. Zoom 25–400 % in Anwendungen).
+
+## Makro-Aufnahme (Tastenkombinationen und Sequenzen)
+
+**Einzelne Shortcuts brauchst du nicht aufzunehmen:** Im Reiter **Tasten & Regler**
+Taste auswählen, unter **Shortcuts & Medien** z. B. **Einfügen** (Strg+V),
+**Kopieren** (Strg+C), **Rückgängig** (Strg+Z) oder **Speichern** (Strg+S)
+auswählen. Das sind direkte Keycodes, keine Makros.
+
+Für mehrere Schritte im Reiter **Snippet-Bibliothek → Makro aufnehmen**
+oder über Rechtsklick auf eine Pad-Taste **Makro aufnehmen & zuweisen**:
+1. Namen vergeben, **Aufnahme starten** anklicken.
+2. Nur im hervorgehobenen Aufnahmefeld Tastenkombinationen und Folgen drücken.
+   **Esc** stoppt, ebenso der Stoppknopf oder Fokusverlust.
+3. Die Liste mit **down**, **up** und **delay** wird angezeigt und kann vor dem
+   Speichern bearbeitet werden. Unerkannte Tasten werden ausdrücklich gemeldet.
+4. **In Bibliothek speichern** oder **Speichern + Taste belegen** (belegt den
+   aktuell ausgewählten Layer, die Taste und den Gestenslot). Erst
+   **Auf Pad speichern** überträgt das Profil.
+
+Der Recorder erfasst ausschließlich die ausdrücklich im App-Fenster
+gedrückten Tasten – **kein systemweiter Hook**, keine Mausbewegungen,
+keine andere Anwendung und keine Zwischenablageinhalte. Keine Passwörter,
+PINs oder andere Geheimnisse aufnehmen: Makros werden als lesbare
+Konfigurationsdaten gespeichert. Die vorherige deutsche Tastenabbildung wird
+verwendet. Das neue Makro landet im **bestehenden Snippet-System**, nicht in
+einer zweiten Bibliothek. Maximal 16 Snippets und gemeinsam 1152 Byte
+Firmware-Makrospeicher. Einträge können weiter manuell angepasst werden.

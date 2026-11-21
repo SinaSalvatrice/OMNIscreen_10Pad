@@ -16,6 +16,7 @@ from layer_operations import (valid_layer_name, rename_layer as update_layer_nam
                               duplicate_layer as copy_layer, move_layer as reorder_layer,
                               delete_layer as remove_layer, layer_references)
 from profile_audit import action_differences
+from macro_recorder import MacroRecorder, parse_snippet_lines
 from bindings import (
     DISPLAY_ACTIONS, SLOTS, action_name, change_key_mode, layer_choices,
     requires_device_actions, set_key_action,
@@ -831,6 +832,8 @@ class Editor:
             if self.clipboard:
                 menu.add_command(label="Belegung einfügen", command=self.paste_key)
             menu.add_command(label="Auf anderen Layer kopieren", command=self.copy_key_layer)
+            menu.add_separator()
+            menu.add_command(label="Makro aufnehmen & zuweisen", command=lambda: self.record_macro(assign_default=True))
         menu.add_command(label="Erkennung öffnen", command=lambda: self.notebook.select(self.detect_page))
         menu.tk_popup(event.x_root, event.y_root)
 
@@ -1229,7 +1232,8 @@ class Editor:
         self.snippet_list.pack(fill="both", expand=True, padx=14, pady=(0, 10))
         self.snippet_list.bind("<<ListboxSelect>>", self.select_snippet)
         button(left, "+ Snippet", self.add_snippet).pack(fill="x", padx=14, pady=(0, 6))
-        button(left, "Duplizieren", self.duplicate_snippet).pack(fill="x", padx=14, pady=(0, 14))
+        button(left, "Duplizieren", self.duplicate_snippet).pack(fill="x", padx=14, pady=(0, 7))
+        button(left, "Makro aufnehmen", self.record_macro).pack(fill="x", padx=14, pady=(0, 14))
         self.snippet_body = tk.Frame(self.snippet_page, bg=PANEL)
         self.snippet_body.pack(side="left", fill="both", expand=True, padx=(12, 0), pady=(8, 0))
 
@@ -1307,20 +1311,69 @@ class Editor:
         self.snippet_selection = len(self.profile["snippets"])
         self.change(lambda p: p["snippets"].append(copied))
 
+    def record_macro(self, assign_default=False):
+        """Record to a new existing-format Snippet and optionally assign it to a key."""
+        if len(self.profile["snippets"]) >= MAX_SNIPPETS:
+            messagebox.showinfo(
+                "Makro aufnehmen", f"Maximal {MAX_SNIPPETS} Snippets möglich. "
+                "Bitte erst Platz in der Bibliothek schaffen.", parent=self.window)
+            return
+        selected_layer = self.layer
+        selected_key = self.target[1] if self.target[0] == "key" else None
+        if selected_key is not None:
+            selected_mode = self.profile["layers"][selected_layer]["keys"][selected_key]["mode"]
+            selected_slot = min(self.action_slot, len(SLOTS[selected_mode]) - 1)
+            display_target = (f"{self.profile['layers'][selected_layer]['name']} · "
+                              f"{self.key_name(selected_key)} · {SLOTS[selected_mode][selected_slot]}")
+        else:
+            selected_mode, selected_slot = 0, 0
+            display_target = "Keine Taste ausgewählt (nur Bibliothek)"
+        new_index = len(self.profile["snippets"])
+
+        def on_save(name, steps, assign):
+            if assign and selected_key is None:
+                messagebox.showwarning(
+                    "Keine Pad-Taste", "Wähle zuerst eine Taste im Bereich Tasten & Regler "
+                    "oder speichere das Makro nur in der Bibliothek.", parent=self.window)
+                return False
+            if len(self.profile["snippets"]) >= MAX_SNIPPETS:
+                messagebox.showerror("Makrospeicher", "Die Snippet-Bibliothek ist voll.",
+                                     parent=self.window)
+                return False
+
+            def apply(profile):
+                if len(profile["snippets"]) >= MAX_SNIPPETS:
+                    raise ValueError("Maximal 16 Makros/ Snippets.")
+                index = len(profile["snippets"])
+                profile["snippets"].append({"name": name, "steps": steps})
+                if assign:
+                    key = profile["layers"][selected_layer]["keys"][selected_key]
+                    set_key_action(key, selected_key, selected_mode, selected_slot,
+                                   0x7700 + index)
+                # This validates the global 1152-byte macro pool, not just one macro.
+                encode_profile(profile)
+
+            if not self.change(apply):
+                return False
+            self.snippet_selection = new_index
+            self.notebook.select(self.snippet_page)
+            self.refresh()
+            if assign:
+                self.status.set(
+                    f"Makro '{name}' auf {display_target} im Entwurf belegt · "
+                    "Jetzt 'Auf Pad speichern' verwenden.")
+            else:
+                self.status.set(
+                    f"Makro '{name}' in der Snippet-Bibliothek gespeichert · "
+                    "In Tasten & Regler als Aktion zuweisen.")
+            return True
+
+        MacroRecorder(self.window, default_name=f"Makro {new_index + 1}",
+                      target_description=display_target, on_save=on_save)
+
     def apply_snippet(self):
         try:
-            steps = []
-            for line in self.snippet_steps.get("1.0", "end-1c").splitlines():
-                if not line.strip():
-                    continue
-                kind, separator, value = line.partition(" ")
-                if not separator or kind not in ("text", "tap", "down", "up", "delay"):
-                    raise ValueError(f"Ungültiger Schritt · {line}")
-                if kind != "text":
-                    value = value.strip()
-                    value = BASIC_CODES[value] if kind != "delay" and value in BASIC_CODES else int(
-                        value, 10 if kind == "delay" else 16)
-                steps.append({"type": kind, "value": value})
+            steps = parse_snippet_lines(self.snippet_steps.get("1.0", "end-1c"))
             snippet = {"name": self.snippet_name.get(), "steps": steps}
             compile_snippet(snippet)
             self.change(lambda p: p["snippets"].__setitem__(self.snippet_selection, snippet))
