@@ -8,6 +8,8 @@
 #define OMP_FIELDS 16
 #define OMP_SNIPPETS 16
 #define OMP_MACRO_POOL 1152
+#define OMP_VIEWS 6
+#define OMP_OLD_PROFILE_SIZE 6084u
 #define OMP_SLOT_SIZE 6144
 #define OMP_STORAGE_START 4096
 
@@ -15,6 +17,7 @@ enum {
     OMP_ACTION_LAYERS = 0x7E40, OMP_ACTION_CUSTOM_SCREEN, OMP_ACTION_MATRIX,
     OMP_ACTION_MENU, OMP_ACTION_HOME, OMP_ACTION_ENCODER_MODE,
     OMP_ACTION_HELP, OMP_ACTION_COLORS, OMP_ACTION_EEPROM, OMP_ACTION_NONE,
+    OMP_ACTION_NAVIGATION, OMP_ACTION_DETAILS, OMP_ACTION_SETTINGS,
 };
 
 typedef struct __attribute__((packed)) {
@@ -62,12 +65,19 @@ typedef struct __attribute__((packed)) {
 } omp_macro_t;
 
 typedef struct __attribute__((packed)) {
+    uint8_t preset, flags;
+    uint16_t background, accent;
+} omp_theme_t;
+
+typedef struct __attribute__((packed)) {
     char magic[4];
     uint8_t layer_count, default_layer, snippet_count, reserved;
     omp_layer_t layers[OMP_LAYERS];
     omp_screen_t screen;
     omp_macro_t snippets[OMP_SNIPPETS];
     uint8_t macro_pool[OMP_MACRO_POOL];
+    char theme_magic[4];          // "SCR1" after legacy 6084-byte payload
+    omp_theme_t themes[OMP_VIEWS]; // Six independently themed firmware views
 } omp_profile_t;
 
 typedef struct __attribute__((packed)) {
@@ -77,7 +87,8 @@ typedef struct __attribute__((packed)) {
 _Static_assert(sizeof(omp_key_t) == 25, "Key format");
 _Static_assert(sizeof(omp_layer_t) == 354, "Layer format");
 _Static_assert(sizeof(omp_field_t) == 38, "Display format");
-_Static_assert(sizeof(omp_profile_t) == 6084, "Profile format");
+_Static_assert(sizeof(omp_theme_t) == 6, "Screen theme format");
+_Static_assert(sizeof(omp_profile_t) == 6124, "Profile format");
 _Static_assert(sizeof(omp_profile_t) + sizeof(omp_slot_header_t) <= OMP_SLOT_SIZE, "Profile storage");
 
 static omp_profile_t omp_profile;
@@ -113,7 +124,20 @@ static uint8_t omp_layer_count(void) {
     return omp_enabled ? omp_profile.layer_count : CC_LAYER_COUNT;
 }
 
+static void omp_theme_defaults(omp_profile_t *p) {
+    memcpy(p->theme_magic, "SCR1", 4);
+    for (uint8_t i = 0; i < OMP_VIEWS; ++i) {
+        p->themes[i].preset = 0;
+        p->themes[i].flags = 0;
+        p->themes[i].background = 0x10E3;
+        p->themes[i].accent = 0xCC2B;
+    }
+}
+
 static bool omp_profile_valid(const omp_profile_t *p) {
+    if (memcmp(p->theme_magic, "SCR1", 4)) return false;
+    for (uint8_t i = 0; i < OMP_VIEWS; ++i)
+        if (p->themes[i].preset > 2 || p->themes[i].flags) return false;
     if (memcmp(p->magic, "OMP2", 4) || p->layer_count == 0 ||
         p->layer_count > OMP_LAYERS || p->default_layer >= p->layer_count ||
         p->snippet_count > OMP_SNIPPETS || p->screen.count > OMP_FIELDS ||
@@ -136,7 +160,10 @@ static bool omp_profile_valid(const omp_profile_t *p) {
         if (f->x >= LCD_W || f->y >= LCD_H || !f->width || !f->height ||
             f->width > LCD_W - f->x || f->height > LCD_H - f->y ||
             f->type > 2 || f->binding > 9 || (f->key & 0x7F) >= OMP_KEYS ||
-            (f->layer != 255 && f->layer >= p->layer_count) ||
+            (f->layer != 255 && 
+             !(f->layer < p->layer_count) &&
+             !(f->layer >= 0x10 && f->layer <= 0x6F &&
+               ((f->layer & 15u) == 15u || (f->layer & 15u) < p->layer_count))) ||
             f->icon > 7 || !f->scale || f->scale > 4 || f->text[19]) return false;
     }
     for (uint8_t i = 0; i < p->snippet_count; ++i) {
@@ -156,9 +183,14 @@ static uint16_t omp_slot_address(uint8_t slot) {
 static bool omp_load_slot(uint8_t slot, omp_profile_t *destination, omp_slot_header_t *header) {
     uint16_t base = omp_slot_address(slot);
     eeprom_read_block(header, (const void *)(uintptr_t)base, sizeof(*header));
-    if (header->marker != 0x32504D4Fu || header->size != sizeof(*destination)) return false;
-    eeprom_read_block(destination, (const void *)(uintptr_t)(base + sizeof(*header)), sizeof(*destination));
-    return omp_checksum(destination, sizeof(*destination)) == header->checksum && omp_profile_valid(destination);
+    if (header->marker != 0x32504D4Fu ||
+        (header->size != sizeof(*destination) && header->size != OMP_OLD_PROFILE_SIZE)) return false;
+    memset(destination, 0, sizeof(*destination));
+    eeprom_read_block(destination, (const void *)(uintptr_t)(base + sizeof(*header)), header->size);
+    // Verify the original checksum before migrating a valid old profile.
+    if (omp_checksum(destination, header->size) != header->checksum) return false;
+    if (header->size == OMP_OLD_PROFILE_SIZE) omp_theme_defaults(destination);
+    return omp_profile_valid(destination);
 }
 
 static void omp_load(void) {

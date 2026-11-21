@@ -169,6 +169,43 @@ static void omp_field_value(const omp_field_t *f, char buffer[24]) {
     snprintf(buffer, 24, "%s", text);
 }
 
+static bool omp_field_for_view(const omp_field_t *f, uint8_t view) {
+    if (f->layer >= 0x10 && f->layer <= 0x6F) {
+        uint8_t selected_view = (f->layer >> 4) - 1u;
+        uint8_t layer = f->layer & 15u;
+        return selected_view == view && (layer == 15u || layer == cc_active);
+    }
+    // Legacy fields belong to the layer-details custom screen.
+    return view == 2 && (f->layer == 255 || f->layer == cc_active);
+}
+
+static void omp_screen_overlay_render(uint8_t view) {
+    if (!omp_enabled || !omp_profile.screen.enabled) return;
+    omp_clip_x = 0;
+    omp_clip_y = 0;
+    omp_clip_right = LCD_W;
+    omp_clip_bottom = LCD_H;
+    for (uint8_t i = 0; i < omp_profile.screen.count; ++i) {
+        const omp_field_t *f = &omp_profile.screen.fields[i];
+        if (!omp_field_for_view(f, view) ||
+            ((f->key & 0x80u) && !(omp_down_mask & (1u << (f->key & 0x7Fu))))) continue;
+        if (f->type == 0) {
+            omp_fill(f->x, f->y, f->width, f->height, f->background);
+        } else if (f->type == 1) {
+            char value[24] = {0};
+            omp_field_value(f, value);
+            omp_field_text(f, value);
+        } else {
+            const uint8_t scale = f->scale;
+            for (uint8_t row = 0; row < 8; ++row)
+                for (uint8_t col = 0; col < 8; ++col)
+                    if ((omp_icons[f->icon][row] & (0x80u >> col)) &&
+                        (col + 1u) * scale <= f->width && (row + 1u) * scale <= f->height)
+                        omp_fill(f->x + col * scale, f->y + row * scale, scale, scale, f->foreground);
+        }
+    }
+}
+
 static void omp_screen_render(void) {
     const omp_screen_t *screen = &omp_profile.screen;
     bool full = omp_screen_invalid || omp_screen_generation != omp_generation;
@@ -176,7 +213,7 @@ static void omp_screen_render(void) {
     uint16_t right = full ? LCD_W : 0, bottom = full ? LCD_H : 0;
     for (uint8_t i = 0; i < screen->count; ++i) {
         const omp_field_t *f = &screen->fields[i];
-        bool visible = (f->layer == 255 || f->layer == cc_active) &&
+        bool visible = omp_field_for_view(f, 2) &&
             (!(f->key & 0x80u) || (omp_down_mask & (1u << (f->key & 0x7Fu))));
         char text[24] = {0};
         if (f->type == 1) omp_field_value(f, text);

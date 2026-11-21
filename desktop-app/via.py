@@ -218,11 +218,22 @@ class OmniPad:
             reply = self._exchange((0x08, 0, 0x71))
         except UnsupportedCommand:
             return None
-        if reply[3:7] != b"OMP2" or int.from_bytes(reply[9:11], "little") != PROFILE_SIZE:
-            raise UnsupportedCommand("Unbekannte OmniPad-Profilversion.")
+        if reply[3:7] != b"OMP2":
+            raise UnsupportedCommand("Diese Firmware unterstützt das OmniPad-Profilsystem nicht.")
+        remote_size = int.from_bytes(reply[9:11], "little")
+        if remote_size != PROFILE_SIZE:
+            if remote_size == 6084:
+                raise UnsupportedCommand(
+                    "Auf dem Pad läuft noch die alte 6084-Byte-Firmware. "
+                    "Das neue Display-Studio benötigt einmalig die Multi-Screen-UF2. "
+                    "Bitte vorher den aktuellen Profilentwurf exportieren. "
+                    "Die App überschreibt das Gerät mit dieser alten Firmware nicht.")
+            raise UnsupportedCommand(
+                f"Inkompatible Firmware: Geräteprofil {remote_size}, App erwartet {PROFILE_SIZE} Byte.")
         return {"enabled": bool(reply[7]), "max_layers": reply[8],
                 "generation": int.from_bytes(reply[11:15], "little"), "expander": bool(reply[15]),
-                "light_preview": bool(reply[16] & 1), "device_actions": bool(reply[16] & 2)}
+                "light_preview": bool(reply[16] & 1), "device_actions": bool(reply[16] & 2),
+                "screen_themes": bool(reply[16] & 4)}
 
     def read_profile(self):
         data = bytearray()

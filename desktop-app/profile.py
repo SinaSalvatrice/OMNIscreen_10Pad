@@ -17,7 +17,14 @@ KEY_STRUCT = struct.Struct("<BH5H12s")
 ZONE_STRUCT = struct.Struct("<4B2H2B")
 SLIDER_STRUCT = struct.Struct("<4B4H")
 FIELD_STRUCT = struct.Struct("<4H6B2H20s")
-PROFILE_SIZE = 8 + MAX_LAYERS * 354 + 4 + MAX_FIELDS * FIELD_STRUCT.size + MAX_SNIPPETS * 4 + MACRO_POOL_SIZE
+# Six compact firmware screen themes use the 40 unused bytes in each
+# 6144-byte transactional EEPROM slot. Previous 6084-byte slots migrate.
+SCREEN_VIEWS = ("Homescreen", "Layerübersicht", "Layerdetails",
+                "Einstellungen", "Navigation", "Keytester")
+SCREEN_PRESETS = ("Industrial", "Terminal", "Spectrum")
+THEME_STRUCT = struct.Struct("<BBHH")  # preset, flags, background RGB565, accent RGB565
+LEGACY_PROFILE_SIZE = 8 + MAX_LAYERS * 354 + 4 + MAX_FIELDS * FIELD_STRUCT.size + MAX_SNIPPETS * 4 + MACRO_POOL_SIZE
+PROFILE_SIZE = LEGACY_PROFILE_SIZE + 4 + len(SCREEN_VIEWS) * THEME_STRUCT.size
 MODES = ["Direkt", "Tap Dance", "Durchschalten"]
 EFFECTS = ["Statisch", "Abwechselnd", "Geteilt", "Farbverlauf", "Lauflicht",
            "Atmen", "Komet", "Funkeln", "Regenbogen"]
@@ -105,9 +112,15 @@ def layer_config(index):
             "lighting": [zone_config(), zone_config("#709fba")]}
 
 
+def default_screen_themes():
+    return [{"preset": 0, "background": "#10171f", "accent": "#ce865e"}
+            for _ in SCREEN_VIEWS]
+
+
 def screen_config():
     return {"schema": "omnipad-screen", "version": 1, "width": 320, "height": 240,
-            "enabled": False, "background": "#10171f", "fields": []}
+            "enabled": False, "background": "#10171f", "fields": [],
+            "themes": default_screen_themes()}
 
 
 
@@ -279,7 +292,16 @@ def validate_screen(screen):
     if not isinstance(fields, list) or len(fields) > MAX_FIELDS:
         raise ValueError(f"Ein Displaylayout kann bis zu {MAX_FIELDS} Elemente enthalten.")
     valid_color(screen["background"])
+    themes = screen.get("themes", default_screen_themes())
+    if len(themes) != len(SCREEN_VIEWS):
+        raise ValueError("Es werden sechs Bildschirmdesigns benötigt.")
+    for theme in themes:
+        integer(theme["preset"], 0, len(SCREEN_PRESETS) - 1, "Bildschirmvorlage")
+        valid_color(theme["background"])
+        valid_color(theme["accent"])
     for field in fields:
+        if "view" in field:
+            integer(field["view"], 0, len(SCREEN_VIEWS) - 1, "Bildschirmzuordnung")
         integer(field["type"], 0, 2, "Elementtyp")
         x, y = integer(field["x"], 0, 319, "X"), integer(field["y"], 0, 239, "Y")
         integer(field["width"], 1, 320 - x, "Breite")
@@ -410,7 +432,11 @@ def encode_profile(profile):
     fields = screen["fields"]
     payload.extend(struct.pack("<2BH", bool(screen["enabled"]), len(fields), color565(screen["background"])))
     for field in fields + [new_field(0) for _ in range(MAX_FIELDS - len(fields))]:
-        visibility = 255 if field["layer"] == -1 else field["layer"]
+        if "view" in field:
+            visibility = ((field["view"] + 1) << 4) | (
+                15 if field["layer"] == -1 else field["layer"])
+        else:
+            visibility = 255 if field["layer"] == -1 else field["layer"]
         payload.extend(FIELD_STRUCT.pack(
             field["x"], field["y"], field["width"], field["height"], field["type"], field["binding"],
             field["key"] | (0x80 if field["pressed_only"] else 0), visibility, field["icon"], field["scale"],
@@ -424,6 +450,10 @@ def encode_profile(profile):
     if len(pool) > MACRO_POOL_SIZE:
         raise ValueError(f"Die Snippets benötigen {len(pool)} Byte. Auf dem Pad sind {MACRO_POOL_SIZE} Byte verfügbar.")
     payload.extend(pool.ljust(MACRO_POOL_SIZE, b"\0"))
+    payload.extend(b"SCR1")
+    for theme in screen.get("themes", default_screen_themes()):
+        payload.extend(THEME_STRUCT.pack(
+            theme["preset"], 0, color565(theme["background"]), color565(theme["accent"])))
     assert len(payload) == PROFILE_SIZE
     return bytes(payload)
 
@@ -465,10 +495,16 @@ def decode_profile(payload, metadata=None):
         x, y, width, height, kind, binding, key, visible, icon, scale, fg, bg, text = FIELD_STRUCT.unpack_from(payload, offset)
         offset += FIELD_STRUCT.size
         if index < elements:
-            screen["fields"].append({"type": kind, "x": x, "y": y, "width": width, "height": height,
-                                      "binding": binding, "key": key & 127, "layer": -1 if visible == 255 else visible,
-                                      "pressed_only": bool(key & 128), "icon": icon, "scale": scale,
-                                      "foreground": colorhex(fg), "background": colorhex(bg), "text": unpack_text(text)})
+            tagged = 0x10 <= visible <= 0x6F and ((visible & 0x0F) < MAX_LAYERS or (visible & 0x0F) == 15)
+            field = {"type": kind, "x": x, "y": y, "width": width, "height": height,
+                     "binding": binding, "key": key & 127,
+                     "layer": (-1 if (visible & 15) == 15 else (visible & 15)) if tagged
+                              else (-1 if visible == 255 else visible),
+                     "pressed_only": bool(key & 128), "icon": icon, "scale": scale,
+                     "foreground": colorhex(fg), "background": colorhex(bg), "text": unpack_text(text)}
+            if tagged:
+                field["view"] = (visible >> 4) - 1
+            screen["fields"].append(field)
     pool_offset = offset + MAX_SNIPPETS * 4
     for index in range(MAX_SNIPPETS):
         start, length = struct.unpack_from("<2H", payload, offset)
@@ -480,6 +516,14 @@ def decode_profile(payload, metadata=None):
             steps = [{"type": {1: "tap", 2: "down", 3: "up", 4: "delay"}[kind], "value": value}
                      for kind, value in struct.iter_unpack("<BH", data)]
             result["snippets"].append({"name": f"Snippet {index + 1}", "steps": steps})
+    theme_offset = pool_offset + MACRO_POOL_SIZE
+    if payload[theme_offset:theme_offset + 4] != b"SCR1":
+        raise ValueError("Ungültige Bildschirmkonfiguration.")
+    screen["themes"] = []
+    for index in range(len(SCREEN_VIEWS)):
+        preset, flags, bg, accent = THEME_STRUCT.unpack_from(payload, theme_offset + 4 + index * THEME_STRUCT.size)
+        screen["themes"].append({"preset": preset, "background": colorhex(bg),
+                                 "accent": colorhex(accent)})
     encode_profile(result)
     if metadata:
         try:
