@@ -108,5 +108,3 @@ def _volume_call(value):
         _release(enumerator)
         if should_uninit:
             ole32.CoUninitialize()
-
-[executed on device: Kampfzwerg (7bd0603e-2fe9-4cae-8d9f-a2925dbe5d32)]
