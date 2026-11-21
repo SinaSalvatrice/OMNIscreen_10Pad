@@ -11,6 +11,10 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog, colorchooser
 
 from assignment_panel import AssignmentPanel
+from layer_manager import LayerManager
+from layer_operations import (valid_layer_name, rename_layer as update_layer_name,
+                              duplicate_layer as copy_layer, move_layer as reorder_layer,
+                              delete_layer as remove_layer, layer_references)
 from profile_audit import action_differences
 from bindings import (
     DISPLAY_ACTIONS, SLOTS, action_name, change_key_mode, layer_choices,
@@ -106,6 +110,7 @@ class Editor:
         self.layer_tabs = tk.Frame(self.layer_bar, bg=BG)
         self.layer_tabs.pack(side="left", fill="x", expand=True)
         button(self.layer_bar, "+ Layer", self.add_layer).pack(side="right")
+        button(self.layer_bar, "Layer verwalten", self.open_layer_manager).pack(side="right", padx=(0, 8))
         self.notebook = ttk.Notebook(window)
         self.notebook.pack(fill="both", expand=True, padx=20, pady=(0, 18))
         self.key_page = tk.Frame(self.notebook, bg=BG)
@@ -115,6 +120,8 @@ class Editor:
         self.notebook.add(self.key_page, text="Tasten & Regler")
         self.layer_entries = AssignmentPanel(self.notebook, self)
         self.notebook.add(self.layer_entries, text="Layer-Zugänge")
+        self.layer_manager = LayerManager(self.notebook, self)
+        self.notebook.add(self.layer_manager, text="Layer verwalten")
         self.notebook.add(self.light_page, text="Beleuchtung")
         self.notebook.add(self.snippet_page, text="Snippet-Bibliothek")
         self.screen_page = ScreenEditor(self.notebook, self)
@@ -419,6 +426,7 @@ class Editor:
         self.refresh_key_shortcuts()
         self.refresh_actions()
         self.layer_entries.refresh()
+        self.layer_manager.refresh()
         self.draw_keys()
         self.refresh_light_form()
         self.refresh_snippets()
@@ -457,6 +465,10 @@ class Editor:
         self.refresh_actions()
         self.screen_page.refresh()
         self.draw_light_preview()
+        self.layer_manager.refresh()
+
+    def open_layer_manager(self):
+        self.notebook.select(self.layer_manager)
 
     def layer_menu(self, event, index):
         self.layer = index
@@ -465,29 +477,100 @@ class Editor:
         menu.add_command(label="Umbenennen", command=self.rename_layer)
         menu.add_command(label="Farbmarkierung wählen", command=self.color_layer)
         menu.add_command(label="Duplizieren", command=lambda: self.add_layer(copy=True))
-        menu.add_command(label="Als Startlayer festlegen",
-                         command=lambda: self.change(lambda p: p.__setitem__("default_layer", index)))
-        menu.tk_popup(event.x_root, event.y_root)
+        menu.add_command(label="Als Startlayer festlegen", command=self.set_default_layer)
+        menu.add_separator()
+        menu.add_command(label="Nach oben verschieben", command=lambda: self.move_layer(-1),
+                         state="normal" if index > 0 else "disabled")
+        menu.add_command(label="Nach unten verschieben", command=lambda: self.move_layer(1),
+                         state="normal" if index < len(self.profile["layers"]) - 1 else "disabled")
+        menu.add_command(label="Layer löschen", command=self.delete_layer,
+                         state="normal" if len(self.profile["layers"]) > 1 else "disabled")
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _sync_layer_selections(self):
+        """Selectors hold numeric indices; reset them after topology changes."""
+        for panel in (self.layer_entries, self.screen_page.assignments):
+            panel.source.current(self.layer)
 
     def rename_layer(self):
-        text = simpledialog.askstring("Layername", "Name", initialvalue=self.current_layer["name"], parent=self.window)
-        if text:
-            self.change(lambda p: p["layers"][self.layer].__setitem__("name", text))
+        current = self.layer
+        name = simpledialog.askstring(
+            "Layer umbenennen", "Neuer Layername (maximal 15 Zeichen):",
+            initialvalue=self.current_layer["name"], parent=self.window)
+        if name is not None:
+            self.change(lambda p: update_layer_name(p, current, name))
 
     def color_layer(self):
         color = colorchooser.askcolor(self.current_layer["color"], parent=self.window)[1]
         if color:
-            self.change(lambda p: p["layers"][self.layer].__setitem__("color", color))
+            current = self.layer
+            self.change(lambda p: p["layers"][current].__setitem__("color", color))
+
+    def set_default_layer(self):
+        index = self.layer
+        self.change(lambda p: p.__setitem__("default_layer", index))
 
     def add_layer(self, copy=False):
+        index = self.layer
+        new_index = len(self.profile["layers"])
         if len(self.profile["layers"]) >= MAX_LAYERS:
             messagebox.showinfo("Layer", f"Diese Firmware unterstützt {MAX_LAYERS} Layer.", parent=self.window)
             return
-        value = deepcopy(self.current_layer) if copy else layer_config(len(self.profile["layers"]))
-        value["name"] = f"{value['name']} Kopie" if copy else value["name"]
-        self.layer = len(self.profile["layers"])
-        if not self.change(lambda p: p["layers"].append(value)):
-            self.layer -= 1
+        def add(p):
+            if copy:
+                copy_layer(p, index, MAX_LAYERS)
+            else:
+                fresh = layer_config(len(p["layers"]))
+                name = fresh["name"]
+                # The default name must also be unique after rename/duplicate.
+                try:
+                    valid_layer_name(p, name)
+                except ValueError:
+                    counter = len(p["layers"]) + 1
+                    while any(layer["name"].casefold() == f"Layer {counter}".casefold()
+                              for layer in p["layers"]):
+                        counter += 1
+                    fresh["name"] = f"Layer {counter}"
+                p["layers"].append(fresh)
+        if self.change(add):
+            self.layer = new_index
+            self._sync_layer_selections()
+            self.refresh()
+
+    def move_layer(self, offset):
+        before = self.layer
+        target = before + offset
+        if not (0 <= target < len(self.profile["layers"])):
+            return
+        if self.change(lambda p: reorder_layer(p, before, target)):
+            self.layer = target
+            self._sync_layer_selections()
+            self.refresh()
+
+    def delete_layer(self):
+        count = len(self.profile["layers"])
+        if count < 2:
+            messagebox.showinfo("Layer", "Der letzte Layer kann nicht gelöscht werden.", parent=self.window)
+            return
+        index = self.layer
+        layer_name = self.current_layer["name"]
+        affected, fields = layer_references(self.profile, index, exclude_layer=index)
+        warning = (
+            f"Layer {index + 1} „{layer_name}“ wirklich löschen?\n\n"
+            f"• {affected} Verweise auf diesen Layer werden auf „Keine Aktion“ gesetzt.\n"
+            f"• {fields} Displayelemente, die nur auf diesem Layer sichtbar sind, werden gelöscht.\n"
+            "• Andere Layerziele und der Startlayer werden passend umnummeriert.\n\n"
+            "Das betrifft zunächst nur den Entwurf und kann mit Rückgängig widerrufen werden."
+        )
+        if not messagebox.askyesno("Layer löschen", warning, parent=self.window):
+            return
+        if self.change(lambda p: remove_layer(p, index)):
+            self.layer = min(index, len(self.profile["layers"]) - 1)
+            self._sync_layer_selections()
+            self.refresh()
 
     def create_keys(self):
         workspace = tk.Frame(self.key_page, bg=BG)
