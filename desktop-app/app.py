@@ -339,6 +339,13 @@ class Editor:
                     warnings.append("Geräteprofil konnte nicht ausgewertet werden")
             if matrix_data is not None and self.active_profile:
                 matrix, zone_map = matrix_data
+                try:
+                    atomic_json(
+                        USER_DATA / "backups" / f"led-zones-{datetime.now():%Y%m%d-%H%M%S}.json",
+                        {"schema": "omnipad-matrix-zones", "version": 1,
+                         "layers": matrix, "zone_map": zone_map})
+                except OSError:
+                    warnings.append("LED-Zonen-Backup konnte nicht gespeichert werden")
                 for idx, layer in enumerate(self.active_profile["layers"]):
                     layer["matrix_zones"] = deepcopy(matrix[idx])
                 self.active_profile["led_zone_map"] = list(zone_map)
@@ -1629,6 +1636,15 @@ class Editor:
                                 "Das Pad benötigt die erweiterte Firmware für dieses Profil. "
                                 "Dein Entwurf ist lokal gespeichert und kann als Profil exportiert werden.",
                                 parent=self.window)
+            return
+        if not self.capabilities.get("matrix_zones"):
+            messagebox.showinfo(
+                "Neue LED-Firmware benötigt",
+                "Dieses Profil verwendet die 30+43-LED-Konfiguration mit fünf "
+                "Matrix-Zonen. Bitte zuerst die passende UF2 flashen. "
+                "Vorher OmniPad-Profil und VIA-Belegung sichern. "
+                "Die App hat nichts auf das Pad geschrieben.",
+                parent=self.window)
             return
         if requires_device_actions(self.profile) and not self.capabilities.get("device_actions"):
             messagebox.showinfo("Firmware aktualisieren",
