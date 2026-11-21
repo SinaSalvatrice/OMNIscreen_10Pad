@@ -24,7 +24,7 @@ from bindings import (
 from profile import (
     ROOT, USER_DATA, BASIC_CODES, MAX_LAYERS, MAX_SNIPPETS, MACRO_POOL_SIZE, MATRIX,
     MODES, EFFECTS, SLIDER_MODES, atomic_json, compile_snippet, decode_profile,
-    default_profile, encode_lighting, encode_profile, key_config, label_for_code, layer_config,
+    default_profile, encode_lighting, encode_profile, zone_config, key_config, label_for_code, layer_config,
 )
 from screen_editor import ScreenEditor
 from led_layout import (LED_COUNT, MAIN_COUNT, LED_LAYOUT_PATH, default_positions,
@@ -1257,12 +1257,26 @@ class Editor:
         left, top, right, bottom = square_bounds(width, height)
         canvas.create_rectangle(left, top, right, bottom,
                                 fill="#192028", outline="#3c4855", width=2)
-        zones, _ = self.lighting_preview_zones()
-        for zone_index, count in ((0, 14), (1, 43)):
-            zone = zones[zone_index]
-            for index in range(count):
+        layer = self.current_layer
+        matrix = layer.get("matrix_zones", [zone_config() for _ in MATRIX_ZONES])
+        for zone_index in range(6):
+            if zone_index < 5:
+                indices = [i for i in range(MAIN_COUNT) if self.led_zone_map[i] == zone_index]
+                zone = matrix[zone_index]
+            else:
+                indices = list(range(MAIN_COUNT, LED_COUNT))
+                zone = layer["lighting"][1]
+            if zone_index == self.zone and hasattr(self, "light_form"):
+                try:
+                    zone = self.lighting_form_values()
+                except (ValueError, KeyError, TypeError):
+                    pass
+            count = len(indices)
+            if not count:
+                continue
+            for local, led_number in enumerate(indices):
                 phase = self.preview_phase * (zone["speed"] + 16) / 200
-                position = count - 1 - index if zone["reverse"] else index
+                position = count - 1 - local if zone["reverse"] else local
                 blend, level = 0, zone["brightness"] / 64
                 effect = zone["effect"]
                 if effect == 1:
@@ -1270,7 +1284,7 @@ class Editor:
                 elif effect == 2:
                     blend = int(position >= count // 2)
                 elif effect == 3:
-                    blend = position / (count - 1)
+                    blend = position / max(1, count - 1)
                 elif effect == 4:
                     blend = int((position + int(phase)) % count >= 4)
                 elif effect == 5:
@@ -1282,30 +1296,34 @@ class Editor:
                 elif effect == 7:
                     blend = int((position * 37 + int(phase) * 13) % 97 < 8)
                 a, b = zone["color_a"], zone["color_b"]
-                rgb = [round((int(a[i:i + 2], 16) * (1 - blend) + int(b[i:i + 2], 16) * blend) * level)
+                rgb = [round((int(a[i:i + 2], 16) * (1 - blend) +
+                              int(b[i:i + 2], 16) * blend) * level)
                        for i in (1, 3, 5)]
                 if effect == 8:
                     import colorsys
                     rgb = [round(channel * level * 255) for channel in colorsys.hsv_to_rgb(
                         (position / count + phase / 255) % 1, 1, 1)]
-                color = "#" + "".join(f"{max(0, min(255, channel)):02x}" for channel in rgb) if zone["enabled"] else "#293039"
-                led_number = index if zone_index == 0 else MAIN_COUNT + index
+                color = "#" + "".join(f"{max(0, min(255, channel)):02x}"
+                                    for channel in rgb) if zone["enabled"] else "#293039"
                 x, y = to_canvas(self.led_positions[led_number], width, height)
-                radius = 13 if zone_index == 0 else 9
+                radius = 9 if led_number < MAIN_COUNT else 8
                 selected = led_number == self.led_selected
                 canvas.create_oval(
                     x-radius, y-radius, x+radius, y+radius, fill=color,
                     outline=ACCENT if selected else "#50606e",
-                    width=3 if selected else 1, tags=(f"led-{led_number}",))
+                    width=3 if selected else 1,
+                    tags=(f"led-{led_number}",))
                 if self.led_show_numbers.get():
-                    brightness = sum(rgb) if zone["enabled"] else 0
-                    ink = "#11171e" if brightness > 380 else "#f0eee9"
+                    ink = "#11171e" if sum(rgb) > 380 and zone["enabled"] else "#f0eee9"
                     canvas.create_text(
                         x, y, text=str(led_number), fill=ink,
-                        font=("Segoe UI", 8 if zone_index == 0 else 7, "bold"),
+                        font=("Segoe UI", 7, "bold"),
                         tags=(f"led-{led_number}",))
         canvas.create_text(width / 2, top + 13, text=self.current_layer["name"], fill=TEXT,
                            font=("Segoe UI", 14, "bold"))
+        canvas.create_text(width / 2, bottom - 12,
+                           text=f"{ZONE_NAMES[self.zone]} · Matrix 0–29 / Frame 30–72",
+                           fill=MUTED, font=("Segoe UI", 9))
 
     def create_snippets(self):
         left = tk.Frame(self.snippet_page, bg=PANEL, width=240)
