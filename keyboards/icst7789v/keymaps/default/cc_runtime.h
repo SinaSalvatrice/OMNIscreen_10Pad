@@ -26,7 +26,8 @@ static bool cc_help_view = false;
 static bool cc_color_view = false;
 static bool cc_matrix_test_view = false;
 static bool cc_tester_active;
-typedef enum { CC_SCREEN_AUTO, CC_SCREEN_LAYERS, CC_SCREEN_CUSTOM } cc_screen_selection_t;
+typedef enum { CC_SCREEN_AUTO, CC_SCREEN_LAYERS, CC_SCREEN_CUSTOM,
+               CC_SCREEN_NAV, CC_SCREEN_DETAILS } cc_screen_selection_t;
 static cc_screen_selection_t cc_screen_selection;
 static bool cc_eeprom_confirm;
 static bool cc_eeprom_confirm_visible;
@@ -130,7 +131,7 @@ static void cc_open_home(void) {
     // HOME in this design means the DEFAULT layer, not a separate layer map.
     cc_activate_layer(1);
     cc_display_mode = true;
-    cc_home_view = false;
+    cc_home_view = true;
     cc_preview = 1;
     cc_menu_view = false;
     cc_help_view = false;
@@ -162,14 +163,37 @@ static void cc_switch_encoder(bool display_mode) {
     cc_dirty = true;
 }
 
+// Screen IDs are the same in firmware and desktop profile:
+ // 0 HOME, 1 INDEX, 2 DETAILS, 3 SETTINGS, 4 NAVIGATION, 5 TESTER.
+static uint8_t cc_view_kind(void) {
+    if (cc_matrix_test_view) return 5;
+    if (cc_menu_view) return 3;
+    if (cc_home_view) return 0;
+    if (cc_screen_selection == CC_SCREEN_LAYERS) return 1;
+    if (cc_screen_selection == CC_SCREEN_NAV) return 4;
+    return 2;
+}
+
+static uint16_t cc_view_bg(void) {
+    return omp_enabled ? omp_profile.themes[cc_view_kind()].background : C_BLACK;
+}
+static uint16_t cc_view_accent(void) {
+    return omp_enabled ? omp_profile.themes[cc_view_kind()].accent : C_CYAN;
+}
+static uint8_t cc_view_preset(void) {
+    return omp_enabled ? omp_profile.themes[cc_view_kind()].preset : 0;
+}
 static void cc_background(void) {
-    lcd_fill(0, 0, LCD_W, LCD_H, C_BLACK);
-    lcd_fill(0, 0, LCD_W, 27, 0x18C7);
-    lcd_fill(0, 216, LCD_W, 24, 0x18C7);
-    cc_draw_text(7, 9, "CC / LAYERS", 1, C_WHITE);
+    uint16_t bg = cc_view_bg();
+    uint16_t panel = cc_view_preset() == 1 ? 0x0000 : 0x18C7;
+    lcd_fill(0, 0, LCD_W, LCD_H, bg);
+    lcd_fill(0, 0, LCD_W, 27, panel);
+    lcd_fill(0, 216, LCD_W, 24, panel);
+    lcd_fill(0, 0, LCD_W, 2, cc_view_accent());
+    cc_draw_text(7, 9, "CC / OMNIPAD", 1, C_WHITE);
     cc_draw_text(265, 9, cc_display_mode ? "DISP" : "ENC", 1,
-                 cc_display_mode ? C_CYAN : C_YELLOW);
-    cc_draw_text(7, 225, "K0 1X MODE 2X DEFAULT HOLD MENU", 1, 0xD69A);
+                 cc_display_mode ? cc_view_accent() : C_YELLOW);
+    cc_draw_text(7, 225, "K0 1X MODE 2X DEFAULT HOLD MENU", 1, cc_view_accent());
 }
 
 static void cc_layer_key_tile(uint8_t i, uint8_t selected, const cc_layer_desc_t *desc, uint16_t accent) {
@@ -205,13 +229,55 @@ static void cc_layer_key_tile(uint8_t i, uint8_t selected, const cc_layer_desc_t
 
 static bool cc_layer_screen_invalid = true;
 
+// Renderers for distinct protected system screens. The settings/tester
+// controls themselves remain firmware-owned; themes never change their actions.
+static void cc_home_screen(void) {
+    cc_background();
+    const uint8_t active = cc_active < omp_layer_count() ? cc_active : 0;
+    const char *name = omp_enabled ? omp_profile.layers[active].name : cc_layers[active].name;
+    const uint16_t accent = cc_view_accent();
+    lcd_fill(12, 43, 296, 133, cc_view_preset() == 1 ? 0x0000 : 0x2186);
+    lcd_fill(12, 43, 296, 5, accent);
+    cc_draw_text(27, 67, "OMNIPAD", 3, accent);
+    cc_draw_text(27, 112, "ACTIVE", 1, C_WHITE);
+    cc_draw_text(27, 134, name, 2, C_WHITE);
+    cc_draw_text(18, 190, "ENC TURN: LAYERS", 1, C_WHITE);
+    cc_draw_text(18, 203, "K0 HOLD: SETTINGS", 1, accent);
+}
+
+static void cc_layer_index_screen(void) {
+    cc_background();
+    const uint16_t accent = cc_view_accent();
+    cc_draw_text(10, 36, "LAYER INDEX", 2, accent);
+    for (uint8_t i = 0; i < omp_layer_count() && i < OMP_LAYERS; ++i) {
+        uint16_t x = 10 + (i / 6u) * 152u;
+        uint16_t y = 70 + (i % 6u) * 23u;
+        uint16_t color = i == cc_preview ? accent : 0x3206;
+        lcd_fill(x, y, 146, 21, color);
+        const char *name = omp_enabled ? omp_profile.layers[i].name : cc_layers[i].name;
+        cc_draw_text(x + 6, y + 7, name, 1, C_WHITE);
+    }
+}
+
+static void cc_navigation_screen(void) {
+    cc_background();
+    const uint16_t accent = cc_view_accent();
+    const uint8_t selected = cc_preview < omp_layer_count() ? cc_preview : 0;
+    const char *name = omp_enabled ? omp_profile.layers[selected].name : cc_layers[selected].name;
+    lcd_fill(16, 50, 288, 132, cc_view_preset() == 1 ? 0x0000 : 0x2186);
+    lcd_fill(16, 50, 288, 5, accent);
+    cc_draw_text(26, 70, "NAVIGATION", 2, accent);
+    cc_draw_text(26, 111, name, 2, C_WHITE);
+    cc_draw_text(26, 154, "TURN SELECT  PUSH ENTER", 1, C_WHITE);
+}
+
 static void cc_layer_screen(void) {
     static uint8_t drawn_layer, drawn_active, drawn_key = UINT8_MAX;
     static bool drawn_display_mode;
     static uint32_t drawn_generation;
     const uint8_t selected = cc_preview;
     const cc_layer_desc_t *desc = &cc_layers[selected < CC_LAYER_COUNT ? selected : 0];
-    const uint16_t accent = omp_enabled ? omp_profile.layers[selected].accent : desc->accent_rgb565;
+    const uint16_t accent = omp_enabled ? cc_view_accent() : desc->accent_rgb565;
     if (!omp_enabled || cc_layer_screen_invalid || selected != drawn_layer || cc_active != drawn_active ||
         cc_display_mode != drawn_display_mode || omp_generation != drawn_generation) {
         cc_background();
@@ -441,14 +507,14 @@ static void cc_matrix_test_screen(void) {
 static void cc_menu_screen(void) {
     static const char *options[6] = {"DISPLAY", "ENCODER", "HOME", "MATRIX", "HELP", "COLORS"};
     cc_background();
-    lcd_fill(7, 33, 109, 171, 0x2186);
-    cc_draw_text(17, 64, "MODULE", 2, C_CYAN);
+    lcd_fill(7, 33, 109, 171, cc_view_preset() == 1 ? 0x0000 : 0x2186);
+    cc_draw_text(17, 64, "MODULE", 2, cc_view_accent());
     cc_draw_text(15, 105, "K0 ONLY", 1, C_WHITE);
     cc_draw_text(16, 164, "NO USB", 1, C_YELLOW);
     for (uint8_t i = 0; i < 6; ++i) {
         const uint16_t y = 34 + i * 29;
-        lcd_fill(125, y, 187, 25, cc_menu_selection == i ? 0x2C96 : 0x2145);
-        lcd_fill(125, y, 4, 25, cc_menu_selection == i ? C_CYAN : 0x4AAB);
+        lcd_fill(125, y, 187, 25, cc_menu_selection == i ? 0x2C96 : (cc_view_preset() == 1 ? 0x0000 : 0x2145));
+        lcd_fill(125, y, 4, 25, cc_menu_selection == i ? cc_view_accent() : 0x4AAB);
         cc_draw_text(141, y + 9, options[i], 1, C_WHITE);
     }
 }
@@ -481,10 +547,13 @@ static void cc_color_screen(bool show_exit) {
 
 static bool omp_screen_invalid = true;
 static void omp_screen_render(void);
+static void omp_screen_overlay_render(uint8_t view);
 
 static bool cc_custom_screen_selected(void) {
-    return omp_enabled && (cc_screen_selection == CC_SCREEN_CUSTOM ||
-           (cc_screen_selection == CC_SCREEN_AUTO && omp_profile.screen.enabled));
+    // Explicit custom mode retains legacy full-screen rendering. Normally the
+    // firmware draws its functional screens and paints view-scoped extras.
+    return omp_enabled && cc_screen_selection == CC_SCREEN_CUSTOM &&
+           omp_profile.screen.enabled;
 }
 
 static void cc_redraw(void) {
@@ -512,7 +581,16 @@ static void cc_redraw(void) {
     else if (cc_help_view) cc_help_screen();
     else if (cc_menu_view) cc_menu_screen();
     else if (cc_custom_screen_selected()) omp_screen_render();
+    else if (cc_home_view) cc_home_screen();
+    else if (cc_screen_selection == CC_SCREEN_LAYERS) cc_layer_index_screen();
+    else if (cc_screen_selection == CC_SCREEN_NAV) cc_navigation_screen();
     else cc_layer_screen();
+    // Only non-safety views permit user-positioned decorations. Menu and
+    // tester are deliberately protected against obscured controls.
+    if (omp_enabled && omp_profile.screen.enabled && !cc_custom_screen_selected() &&
+        !cc_menu_view && !cc_matrix_test_view && !cc_eeprom_confirm &&
+        cc_reset_state != CC_RESET_HOLDING && !cc_help_view && !cc_color_view)
+        omp_screen_overlay_render(cc_view_kind());
     cc_dirty = false;
     cc_last_draw = timer_read();
 }
