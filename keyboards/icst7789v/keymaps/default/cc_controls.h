@@ -454,7 +454,7 @@ void housekeeping_task_user(void) {
         const int16_t sample = analogReadPin(SLIDER_ADC_PIN);
         if (sample >= 0) {
             uint16_t previous_pct = cc_slider_pct;
-            cc_slider_raw = sample;
+            cc_slider_raw = cc_slider_valid ? omp_slider_filter_adc(sample, cc_slider_raw) : (uint16_t)sample;
             const uint16_t value = omp_slider_value(cc_slider_raw);
             cc_slider_pct = ((uint32_t)value * 100u + 511u) / 1023u;
             cc_slider_valid = true;
@@ -462,7 +462,7 @@ void housekeeping_task_user(void) {
                 if (cc_slider_pct != previous_pct) cc_dirty = true;
             }
             if (!cc_matrix_test_view && !cc_menu_view) {
-                if (omp_enabled) omp_slider_update(sample);
+                if (omp_enabled) omp_slider_update(value);
                 else cc_zoom_slider_update(value);
             }
         } else cc_slider_valid = false;

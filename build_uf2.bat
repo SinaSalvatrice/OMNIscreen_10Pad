@@ -51,6 +51,6 @@ if not "%RESULT%"=="0" (
 
 echo.
 echo UF2 ready:
-echo   %PROJECT_ROOT%\build\ICST7789V.uf2
+echo   %PROJECT_ROOT%\build\OmniPad.uf2
 echo.
 exit /b 0

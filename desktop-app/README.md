@@ -14,6 +14,7 @@ Der Starter richtet die USB-Bibliothek in einer eigenen Python-Umgebung ein.
 - Rechtsklick auf eine Taste öffnet Displaytext, Kopieren, Einfügen und die Verknüpfung zum Display-Studio.
 - Rechtsklick auf einen Layer öffnet Name, Farbmarkierung, Duplizieren und Startlayer. **+ Layer** fügt einen Layer hinzu.
 - Der Schieberegler an **GPIO28 / ADC2** erhält seine eigene Belegung pro Layer. Er kann Auf-/Abwärtsaktionen oder Main-/Frame-Helligkeit steuern. Minimum, Maximum, Schrittweite, Totzone und Richtung sind einstellbar. Firmwareversion 5 dreht die Grundrichtung um. Die Option „Richtung umkehren“ bleibt als Override pro Layer verfügbar.
+- Die Firmware hält den Reglerwert bei Schwankungen bis etwa 1 % des kalibrierten Wegs stabil. Anzeige, Tester und Regleraktionen verwenden denselben gefilterten Wert. Die kalibrierten Endpunkte bleiben bei 0 % und 100 % erreichbar.
 - **Beleuchtung** bietet neun Effekte, zwei Farben und unabhängige Einstellungen für die 14 Main- und 43 Frame-LEDs. Trigger reagieren auf Taste, Encoder, Layer oder Regler.
 - **Live am Pad** zeigt mit Firmware 6 die Einstellungen des ausgewählten Layers beim Bearbeiten direkt auf beiden LED-Gruppen. Beim Verlassen des Reiters, während eines Tests oder nach USB-Trennung erscheint wieder die gespeicherte Beleuchtung. **Übernehmen** behält die Änderungen im App-Entwurf, **Auf Pad speichern** überträgt sie dauerhaft.
 - **Quadratische 1:1-Vorschau:** Die LED-Anordnung wird in einem mittig platzierten Quadrat dargestellt, auch wenn das Beleuchtungsfenster breit ist. Drag-and-drop, Tastaturbewegung und die gespeicherten X/Y-Koordinaten nutzen dieselbe quadratische Fläche. Vorhandene LED-Anordnungen bleiben unverändert.
@@ -58,8 +59,8 @@ Ab Firmware 6 setzt **Encoder-Taster und K0 gleichzeitig fünf Sekunden halten**
 die QMK-/VIA-Belegung und beide OmniPad-Profilspeicher auf Werkseinstellungen zurück.
 Das Pad startet neu. Vor Ablauf der fünf Sekunden loslassen, um abzubrechen.
 Die zuweisbare Aktion **Clear EEPROM …** öffnet eine Bestätigung auf dem Pad.
-Ein neuer Druck auf den Encoder bestätigt, K0 bricht ab. Display- und Geräteaktionen
-benötigen den Build `OmniPad-V6-GPIO-Belegungseditor.uf2`.
+Ein neuer Druck auf den Encoder bestätigt, K0 bricht ab. Die aktuelle Firmware
+mit Display- und Geräteaktionen liegt nach dem Build als `build/OmniPad.uf2` vor.
 
 ## Gerätespeicher
 

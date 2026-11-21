@@ -285,6 +285,20 @@ static void omp_layer_changed(void) {
     // Pending multi-taps keep the actions captured on their original layer.
 }
 
+static uint16_t omp_slider_filter_adc(uint16_t sample, uint16_t previous) {
+    const omp_slider_t *slider = omp_enabled ? &omp_profile.layers[cc_active].slider : NULL;
+    const uint16_t minimum = slider ? slider->minimum : 0;
+    const uint16_t maximum = slider ? slider->maximum : 1023;
+    const uint16_t band = (maximum - minimum + 99u) / 100u;
+    const uint16_t delta = sample > previous ? sample - previous : previous - sample;
+    // About 1% of the calibrated travel, with at least two ADC counts.
+    // Entering a calibrated endpoint bypasses the band so 0% and 100% remain reachable.
+    if (delta > (band < 2u ? 2u : band) ||
+        (sample <= minimum && previous > minimum) ||
+        (sample >= maximum && previous < maximum)) return sample;
+    return previous;
+}
+
 // A larger logical value follows the physically corrected orientation.
 // The existing reverse field is an optional override, including old profiles.
 static uint16_t omp_slider_value(uint16_t raw) {
@@ -297,16 +311,14 @@ static uint16_t omp_slider_value(uint16_t raw) {
     return slider && slider->reverse ? value : 1023u - value;
 }
 
-static void omp_slider_update(int16_t raw) {
-    if (!omp_enabled || raw < 0) return;
+static void omp_slider_update(int16_t value) {
     const omp_slider_t *slider = &omp_profile.layers[cc_active].slider;
-    int16_t value = omp_slider_value(raw);
     if (omp_slider_reference < 0) {
         omp_slider_reference = value;
         return;
     }
     int16_t delta = value - omp_slider_reference;
-    if (delta > -(int16_t)slider->deadband && delta < slider->deadband) return;
+    if (!delta || (delta > -(int16_t)slider->deadband && delta < slider->deadband)) return;
     if (slider->mode >= 2) {
         uint8_t brightness = ((uint32_t)value * RGBLIGHT_LIMIT_VAL + 511u) / 1023u;
         if (slider->mode != 3) omp_brightness_override[0] = brightness;
