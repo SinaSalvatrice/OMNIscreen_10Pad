@@ -1,6 +1,8 @@
 """USB transport and the VIA commands supported by the OMNIscreen 10Pad."""
 
 from dataclasses import dataclass
+import os
+from pathlib import Path
 from datetime import datetime, timezone
 from struct import iter_unpack, pack
 
@@ -25,6 +27,27 @@ class UnsupportedCommand(ViaError):
     pass
 
 
+def _acquire_usb_lease():
+    """Prevent parallel OmniPad clients from mixing HID replies."""
+    if os.name != "nt":
+        return None
+    import msvcrt
+
+    folder = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "OmniPad"
+    folder.mkdir(parents=True, exist_ok=True)
+    handle = (folder / "via-usb.lock").open("a+b")
+    try:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError as error:
+        handle.close()
+        raise ViaError(
+            "Ein anderer OmniPad-Editor verwendet bereits die USB-Schnittstelle. "
+            "Bitte das andere Editorfenster schließen; der Entwurf bleibt erhalten."
+        ) from error
+    return handle
+
+
 @dataclass(frozen=True)
 class Detection:
     active_layer: int
@@ -45,8 +68,9 @@ class Detection:
 
 
 class OmniPad:
-    def __init__(self, device, usb_id):
+    def __init__(self, device, usb_id, lease=None):
         self._device = device
+        self._lease = lease
         self.usb_id = usb_id
         self._device.set_nonblocking(0)
         self.protocol = self._integer((0x01,), 1, 2)
@@ -60,22 +84,27 @@ class OmniPad:
 
     @classmethod
     def connect(cls):
-        interfaces = [(entry, (vid, pid)) for vid, pid in USB_IDS for entry in hid.enumerate(vid, pid)]
-        matches = {entry["path"]: usb_id for entry, usb_id in interfaces
-                   if (entry.get("usage_page"), entry.get("usage")) == (0xFF60, 0x61)}
-        if not matches:
-            if interfaces:
-                raise ViaError("OmniPad über USB sichtbar · Die VIA-Schnittstelle fehlt.")
-            raise ViaError("Kein OmniPad am USB-Anschluss gefunden.")
-        if len(matches) > 1:
-            raise ViaError("Mehrere OmniPads gefunden. Bitte nur ein Pad anschließen.")
-        path, usb_id = next(iter(matches.items()))
-        device = hid.device()
+        lease = _acquire_usb_lease()
+        device = None
         try:
+            interfaces = [(entry, (vid, pid)) for vid, pid in USB_IDS for entry in hid.enumerate(vid, pid)]
+            matches = {entry["path"]: usb_id for entry, usb_id in interfaces
+                       if (entry.get("usage_page"), entry.get("usage")) == (0xFF60, 0x61)}
+            if not matches:
+                if interfaces:
+                    raise ViaError("OmniPad über USB sichtbar · Die VIA-Schnittstelle fehlt.")
+                raise ViaError("Kein OmniPad am USB-Anschluss gefunden.")
+            if len(matches) > 1:
+                raise ViaError("Mehrere OmniPads gefunden. Bitte nur ein Pad anschließen.")
+            path, usb_id = next(iter(matches.items()))
+            device = hid.device()
             device.open_path(path)
-            return cls(device, usb_id)
+            return cls(device, usb_id, lease)
         except Exception:
-            device.close()
+            if device is not None:
+                device.close()
+            if lease is not None:
+                lease.close()
             raise
 
     def __enter__(self):
@@ -85,7 +114,12 @@ class OmniPad:
         self.close()
 
     def close(self):
-        self._device.close()
+        try:
+            self._device.close()
+        finally:
+            if self._lease is not None:
+                self._lease.close()
+                self._lease = None
 
     def _exchange(self, request, echo=None, timeout=900):
         request = bytes(request)
