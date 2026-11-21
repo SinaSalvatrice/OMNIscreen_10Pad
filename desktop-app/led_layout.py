@@ -1,13 +1,12 @@
-"""Persistent 57-LED physical layout for the desktop preview (not firmware data)."""
+"""73-LED physical layout: 30 matrix + unchanged 43 Frame, editable preview."""
 
 import json
 from math import isfinite
 
 from profile import USER_DATA, atomic_json
+from led_zones import (LED_COUNT, MATRIX_COUNT, FRAME_COUNT, matrix_positions)
 
-LED_COUNT = 57
-MAIN_COUNT = 14
-FRAME_COUNT = 43
+MAIN_COUNT = MATRIX_COUNT
 LED_LAYOUT_PATH = USER_DATA / "led-layout.json"
 PADDING = 26
 
@@ -15,9 +14,7 @@ PADDING = 26
 def default_positions():
     """LED indices are fixed in the real serial chain, regardless of placement."""
     points = []
-    for index in range(MAIN_COUNT):
-        points.append([round(0.19 + (index % 7) * 0.62 / 6, 5),
-                       0.40 if index < 7 else 0.61])
+    points.extend(matrix_positions())
     for index in range(FRAME_COUNT):
         perimeter = 4 * index / FRAME_COUNT
         edge, t = int(perimeter), perimeter % 1
@@ -34,13 +31,15 @@ def default_positions():
 
 
 def validate_positions(data):
-    if not isinstance(data, dict) or data.get("schema") != "omnipad-led-layout" or data.get("version") != 1:
-        raise ValueError("Unbekanntes LED-Layoutformat (erwartet omnipad-led-layout v1).")
-    if data.get("led_count") != LED_COUNT:
-        raise ValueError("LED-Layout muss 57 Positionen für die feste Kette enthalten.")
+    if not isinstance(data, dict) or data.get("schema") != "omnipad-led-layout" or data.get("version") not in (1, 2):
+        raise ValueError("Unbekanntes LED-Layoutformat.")
     points = data.get("positions")
+    # Legacy 57-LED layout: preserve the original frame's physical positions,
+    # discard only the superseded 14-LED Main section.
+    if data.get("version") == 1 and data.get("led_count") == 57 and isinstance(points, list) and len(points) == 57:
+        points = matrix_positions() + points[14:]
     if not isinstance(points, list) or len(points) != LED_COUNT:
-        raise ValueError("Das LED-Layout muss exakt 57 Positionen enthalten.")
+        raise ValueError("Es werden 30 Matrix- und 43 Frame-Positionen benötigt.")
     result = []
     for index, point in enumerate(points):
         if (not isinstance(point, list) or len(point) != 2 or
@@ -60,7 +59,7 @@ def read_positions(path=LED_LAYOUT_PATH):
 
 
 def write_positions(positions, path=LED_LAYOUT_PATH):
-    data = {"schema": "omnipad-led-layout", "version": 1,
+    data = {"schema": "omnipad-led-layout", "version": 2,
             "led_count": LED_COUNT, "positions": positions}
     validate_positions(data)
     atomic_json(path, data)
