@@ -75,3 +75,11 @@ Das erweiterte Profil liegt in zwei geprüften Speicherplätzen.
 USB-Daten werden zunächst im RAM gesammelt. Erst ein vollständig empfangenes
 und geprüftes Profil wird gespeichert. Makropausen laufen zeitgesteuert,
 damit sie die Tastenabfrage nicht anhalten.
+
+## Geräteprofil prüfen und konkurrierende Editor-Fenster
+
+**Pad / Entwurf prüfen** liest das aktuelle 6084-Byte-Geräteprofil über USB aus und vergleicht es mit dem Entwurf. Bei Unterschieden werden Startlayer, 1×/2×/3×/4×/Halten-Aktionen, Tastenmodi und Encoderbelegungen getrennt ausgewiesen. Der Vergleich ändert weder den Entwurf noch das Pad. Bei identischen Bytes liegt ein Nicht-Auslösen von Layerwechseln oder Mehrfachtipps nicht an der Übertragung, sondern an der Eingabe-/Firmware-Ausführung.
+
+Die USB-Schnittstelle wird jetzt exklusiv für eine OmniPad-Editor-Instanz reserviert. Ein weiteres Editorfenster kann nicht gleichzeitig auf dieselbe USB-Antwortwarteschlange zugreifen. Bereits laufende ältere Programmversionen oder externe USB-Programme (z. B. VIA) respektieren diese Sperre nicht: Vor dem Test die alten OmniPad-Editorfenster schließen und den aktualisierten Editor neu starten. Bereits gespeicherte Entwürfe bleiben erhalten.
+
+**Wichtig:** „Entwurf gespeichert“ bedeutet nur auf dem PC gespeichert. Erst „Auf Pad speichern“ überträgt und verifiziert den Entwurf. Die neue Prüffunktion liefert den unabhängigen Live-Abgleich.
