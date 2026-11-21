@@ -4,9 +4,10 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 from datetime import datetime, timezone
-from struct import iter_unpack, pack
+from struct import iter_unpack, pack, unpack
 
-from profile import PROFILE_SIZE
+from profile import PROFILE_SIZE, ZONE_STRUCT, encode_lighting, colorhex, MAX_LAYERS, zone_config
+from led_zones import MATRIX_COUNT, MATRIX_ZONES, FRAME_COUNT, validate_zone_map, default_zone_map
 
 import hid
 
@@ -233,7 +234,7 @@ class OmniPad:
         return {"enabled": bool(reply[7]), "max_layers": reply[8],
                 "generation": int.from_bytes(reply[11:15], "little"), "expander": bool(reply[15]),
                 "light_preview": bool(reply[16] & 1), "device_actions": bool(reply[16] & 2),
-                "screen_themes": bool(reply[16] & 4)}
+                "screen_themes": bool(reply[16] & 4), "matrix_zones": bool(reply[16] & 8)}
 
     def read_profile(self):
         data = bytearray()
@@ -277,6 +278,64 @@ class OmniPad:
 
     def preview_lighting(self, payload):
         self._exchange(bytes((0x07, 0, 0x79, payload is not None)) + (payload or b""))
+
+    def matrix_zone_capabilities(self):
+        reply = self._exchange((0x08, 0, 0x7B))
+        if reply[3:7] != b"MZ01" or reply[7:10] != bytes((5, MATRIX_COUNT, FRAME_COUNT)):
+            raise UnsupportedCommand("Firmware unterstützt die 30+43-LED-Zonen nicht.")
+        return True
+
+    def read_matrix_zones(self):
+        self.matrix_zone_capabilities()
+        result = []
+        for layer in range(MAX_LAYERS):
+            zones = []
+            for index in range(len(MATRIX_ZONES)):
+                reply = self._exchange((0x08, 0, 0x7A, layer, index))
+                effect, brightness, speed, flags, a, b, triggers, duration = ZONE_STRUCT.unpack_from(reply, 5)
+                zones.append({
+                    "effect": effect, "brightness": brightness, "speed": speed,
+                    "enabled": bool(flags & 1), "reverse": bool(flags & 2),
+                    "color_a": colorhex(a), "color_b": colorhex(b),
+                    "triggers": triggers, "duration": duration})
+            result.append(zones)
+        zone_map = []
+        for page in range(2):
+            reply = self._exchange((0x08, 0, 0x7A, 255, page))
+            zone_map.extend(reply[5:20])
+        validate_zone_map(zone_map)
+        return result, zone_map
+
+    def write_matrix_zones(self, profile, *, progress=None):
+        self.matrix_zone_capabilities()
+        zone_map = validate_zone_map(profile.get("led_zone_map", default_zone_map()))
+        # Explicit separate config stored in the QMK USER datablock.
+        # The original transactional profile and Frame settings are unchanged.
+        for layer in range(MAX_LAYERS):
+            stored = profile["layers"][layer] if layer < len(profile["layers"]) else {}
+            zones = stored.get("matrix_zones", [zone_config() for _ in MATRIX_ZONES])
+            if len(zones) != len(MATRIX_ZONES):
+                raise ValueError("Die fünf Matrix-Zonen fehlen auf Layer {}.".format(layer + 1))
+            for index, zone in enumerate(zones):
+                packed = encode_lighting([zone, zone])[:ZONE_STRUCT.size]
+                self._exchange(bytes((0x07, 0, 0x7A, layer, index)) + packed)
+                if progress:
+                    progress(layer * 5 + index + 1, MAX_LAYERS * 5 + 2)
+        for page in range(2):
+            self._exchange(bytes((0x07, 0, 0x7A, 255, page)) +
+                           bytes(zone_map[page * 15:(page + 1) * 15]))
+            if progress:
+                progress(MAX_LAYERS * 5 + page + 1, MAX_LAYERS * 5 + 2)
+        self._exchange((0x07, 0, 0x7B, 1), timeout=12000)
+        received, actual_map = self.read_matrix_zones()
+        if actual_map != zone_map:
+            raise ViaError("LED-Zonenmatrix stimmt nach dem Speichern nicht überein.")
+        for layer in range(len(profile["layers"])):
+            for index, expected in enumerate(profile["layers"][layer].get("matrix_zones", [])):
+                if encode_lighting([expected, expected])[:10] != encode_lighting(
+                        [received[layer][index], received[layer][index]])[:10]:
+                    raise ViaError(f"LED-Zone Layer {layer+1}, Zone {index+1}: Geräteabweichung.")
+        return True
 
     def detection(self):
         reply = self._exchange((0x08, 0, 0x70), timeout=DIAGNOSTIC_TIMEOUT_MS)
