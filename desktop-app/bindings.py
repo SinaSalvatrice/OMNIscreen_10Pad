@@ -24,6 +24,9 @@ DISPLAY_ACTIONS = {
     0x7E46: "Hilfe",
     0x7E47: "Farbfelder",
     0x7E48: "Clear EEPROM …",
+    0x7E4A: "Navigation öffnen",
+    0x7E4B: "Layerdetails öffnen",
+    0x7E4C: "Einstellungen öffnen",
 }
 DISABLED = 0x7E49
 K0_DEFAULTS = (0x7E45, 0x7E44, 0x7E42, 0, 0x7E43)

@@ -14,7 +14,7 @@ static void cc_clear_eeprom(void) {
 }
 
 static bool omp_device_action(uint16_t code, bool pressed) {
-    if (code < OMP_ACTION_LAYERS || code > OMP_ACTION_NONE) return false;
+    if (code < OMP_ACTION_LAYERS || code > OMP_ACTION_SETTINGS) return false;
     if (!pressed || cc_tester_active || code == OMP_ACTION_NONE) return true;
     if (code == OMP_ACTION_MATRIX) {
         cc_matrix_test_toggle();
@@ -42,7 +42,20 @@ static bool omp_device_action(uint16_t code, bool pressed) {
         case OMP_ACTION_HOME:
             cc_activate_layer(omp_profile.default_layer);
             cc_switch_encoder(true);
-            cc_screen_selection = CC_SCREEN_LAYERS;
+            cc_screen_selection = CC_SCREEN_AUTO;
+            break;
+        case OMP_ACTION_NAVIGATION:
+            cc_switch_encoder(true);
+            cc_screen_selection = CC_SCREEN_NAV;
+            cc_home_view = false;
+            break;
+        case OMP_ACTION_DETAILS:
+            cc_switch_encoder(true);
+            cc_screen_selection = CC_SCREEN_DETAILS;
+            cc_home_view = false;
+            break;
+        case OMP_ACTION_SETTINGS:
+            cc_open_menu();
             break;
         case OMP_ACTION_MENU: cc_open_menu(); break;
         case OMP_ACTION_ENCODER_MODE: cc_switch_encoder(!cc_display_mode); break;
