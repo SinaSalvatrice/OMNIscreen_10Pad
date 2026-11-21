@@ -134,3 +134,33 @@ Konfigurationsdaten gespeichert. Die vorherige deutsche Tastenabbildung wird
 verwendet. Das neue Makro landet im **bestehenden Snippet-System**, nicht in
 einer zweiten Bibliothek. Maximal 16 Snippets und gemeinsam 1152 Byte
 Firmware-Makrospeicher. Einträge können weiter manuell angepasst werden.
+
+## Multi-Screen Display-Studio (320 × 240)
+
+Im Display-Studio lassen sich sechs Bildschirmtypen einzeln auswählen:
+Homescreen, Layerübersicht, Layerdetails, Einstellungen, Navigation und
+Keytester. Jede Ansicht hat drei Stilvorlagen (Industrial, Terminal,
+Spectrum) sowie eigene Hintergrund- und Akzentfarben.
+
+Bildschirm auswählen, eine Vorlage wählen, Farben anpassen und
+„Bildschirmdesign übernehmen“ anklicken. Bei Home, Layerübersicht,
+Layerdetails und Navigation dürfen zusätzliche Texte, Icons und
+Flächen eingesetzt werden. Einstellungen und Keytester schützen die
+funktionalen Bedienelemente und sind nur gestalterisch anpassbar.
+
+Die sechzehn vorhandenen frei platzierbaren Displayelemente bilden
+weiterhin einen **gemeinsamen Pool**. Jedes Element ist zusätzlich
+einem der sechs Screens zugeordnet. Alte Layouts und deren Elemente
+werden der Layerdetails-Ansicht zugeordnet; existierende Felder gehen
+beim Upgrade nicht verloren.
+
+Die sechs Theme-Profile benötigen 40 zusätzliche Bytes. Der neue
+Profilblock ist 6124 statt 6084 Byte groß und passt einschließlich
+16-Byte-Header weiterhin in beide vorhandenen EEPROM-Slots à 6144 Byte.
+Beim Start der neuen Firmware wird eine ältere gültige Profilkopie vor
+dem Verwenden um sechs Standard-Themes ergänzt. Die eigentliche
+Profilübertragung erfolgt weiterhin mit „Auf Pad speichern“.
+
+**Einmaliger Firmwarewechsel erforderlich**, um das neue
+6-Screen-Profil zu verstehen. Die alte Firmware akzeptiert die neue
+Profilgröße nicht. Vor dem Flashen den aktuellen Entwurf exportieren.
