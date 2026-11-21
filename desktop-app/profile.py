@@ -495,7 +495,7 @@ def decode_profile(payload, metadata=None):
         x, y, width, height, kind, binding, key, visible, icon, scale, fg, bg, text = FIELD_STRUCT.unpack_from(payload, offset)
         offset += FIELD_STRUCT.size
         if index < elements:
-            tagged = 0x10 <= visible <= 0x6F and (visible & 0x0F) <= 12
+            tagged = 0x10 <= visible <= 0x6F and ((visible & 0x0F) < MAX_LAYERS or (visible & 0x0F) == 15)
             field = {"type": kind, "x": x, "y": y, "width": width, "height": height,
                      "binding": binding, "key": key & 127,
                      "layer": (-1 if (visible & 15) == 15 else (visible & 15)) if tagged
