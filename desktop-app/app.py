@@ -29,6 +29,8 @@ from profile import (
 from screen_editor import ScreenEditor
 from led_layout import (LED_COUNT, MAIN_COUNT, LED_LAYOUT_PATH, default_positions,
                         read_positions, write_positions, to_canvas, from_canvas, square_bounds)
+from led_zones import (ZONE_NAMES, MATRIX_ZONES, MATRIX_COUNT, default_zone_map,
+                       validate_zone_map, matrix_positions)
 from tester import Tester
 from ui_helpers import BG, PANEL, KEY, TEXT, MUTED, ACCENT, Form, ScrollPanel, button, label, style
 from via import OmniPad, ViaError, UnsupportedCommand
@@ -84,6 +86,8 @@ class Editor:
                 self.profile, self.disk_draft = loaded, True
             except (OSError, KeyError, TypeError, ValueError):
                 pass
+        self.led_zone_map = validate_zone_map(
+            self.profile.get("led_zone_map", default_zone_map()))
         self.keys = json.loads((ROOT / "keyboards/icst7789v/keyboard.json").read_text())[
             "layouts"]["LAYOUT"]["layout"]
 
@@ -300,15 +304,21 @@ class Editor:
                     native_tester = True
                 raw = None
                 snapshot = None
+                matrix_data = None
                 try:
                     raw = pad.read_profile() if caps and caps["enabled"] else None
                 except ViaError:
                     warnings.append("Geräteprofil konnte nicht geladen werden")
+                if caps and caps.get("matrix_zones"):
+                    try:
+                        matrix_data = pad.read_matrix_zones()
+                    except (ViaError, ValueError):
+                        warnings.append("LED-Zonen konnten nicht gelesen werden")
                 try:
                     snapshot = pad.snapshot()
                 except ViaError:
                     warnings.append("VIA-Sicherung konnte nicht gelesen werden")
-                return pad, caps, raw, snapshot, detection, native_tester, warnings
+                return pad, caps, raw, snapshot, detection, native_tester, matrix_data, warnings
             except OSError as error:
                 pad.close()
                 raise ViaError(f"Die USB-Verbindung wurde beim Auslesen unterbrochen · {error}") from error
@@ -316,7 +326,7 @@ class Editor:
                 pad.close()
                 raise
         def ready(result):
-            self.device, self.capabilities, raw, snapshot, detection, native_tester, warnings = result
+            self.device, self.capabilities, raw, snapshot, detection, native_tester, matrix_data, warnings = result
             self.tester_page.native = native_tester
             self.generation = self.capabilities["generation"] if self.capabilities else None
             self.on_device = raw
@@ -327,6 +337,11 @@ class Editor:
                     self.active_profile = decode_profile(raw, metadata)
                 except (ValueError, KeyError, TypeError):
                     warnings.append("Geräteprofil konnte nicht ausgewertet werden")
+            if matrix_data is not None and self.active_profile:
+                matrix, zone_map = matrix_data
+                for idx, layer in enumerate(self.active_profile["layers"]):
+                    layer["matrix_zones"] = deepcopy(matrix[idx])
+                self.active_profile["led_zone_map"] = list(zone_map)
             if snapshot is not None:
                 try:
                     atomic_json(USER_DATA / "backups" / f"via-{datetime.now():%Y%m%d-%H%M%S}.json", snapshot)
@@ -339,6 +354,8 @@ class Editor:
                 self.future.clear()
                 self.save_draft()
             self.layer = min(self.layer, len(self.profile["layers"]) - 1)
+            self.led_zone_map = validate_zone_map(
+                self.profile.get("led_zone_map", default_zone_map()))
             version = f"Firmware {self.device.firmware}" if self.device.firmware else "Firmwareversion unbekannt"
             message = f"USB verbunden · {version} · {len(self.profile['layers'])} eingerichtete Layer"
             if not self.capabilities:
@@ -946,8 +963,14 @@ class Editor:
         button(actions, "Zurücksetzen", self.reset_led_layout).pack(side="left", padx=(5, 0))
         self.led_status = tk.StringVar(value="LED anklicken und ziehen · Pfeiltasten: 1 px · Shift: 5 px")
         label(left, "", color=MUTED, textvariable=self.led_status).pack(anchor="w", padx=18, pady=(3, 0))
-        label(left, "1:1 Vorschau · Main 0–13 · Frame 14–56 · Reihenfolge unverändert",
-              color=MUTED).pack(anchor="w", padx=18, pady=(0, 8))
+        label(left, "1:1 · Matrix 0–29 (6×5) · Frame 30–72 (43 unverändert)",
+              color=MUTED).pack(anchor="w", padx=18, pady=(0, 6))
+        assign_tools = tk.Frame(left, bg=PANEL)
+        assign_tools.pack(fill="x", padx=12, pady=(0, 8))
+        button(assign_tools, "LED → gewählte Zone", self.assign_led_zone).pack(side="left")
+        button(assign_tools, "Zeilenweise", lambda: self.set_matrix_order("rows")).pack(
+            side="left", padx=4)
+        button(assign_tools, "Zickzack", lambda: self.set_matrix_order("serpentine")).pack(side="left")
         if self.led_layout_warning:
             self.led_status.set("LED-Layout ungültig – Standardpositionen geladen")
         self.light_settings = ScrollPanel(self.light_page, 320)
@@ -965,9 +988,13 @@ class Editor:
                         command=self.refresh_light_live_status).pack(anchor="w", padx=14)
         label(form.parent, textvariable=self.light_live_status, size=9, color=MUTED,
               wraplength=270).pack(anchor="w", padx=14, pady=(4, 8))
-        chosen = form.choice("zone", "LED-Gruppe", self.zone, ["Main · 14 LEDs", "Frame · 43 LEDs"])
+        chosen = form.choice("zone", "LED-Zone", self.zone,
+                             [f"{name} · {self.led_zone_map.count(index)} LEDs"
+                              if index < 5 else "Frame · 43 LEDs (unverändert)"
+                              for index, name in enumerate(ZONE_NAMES)])
         chosen.trace_add("write", lambda *_: self.select_zone(chosen))
-        zone = self.current_layer["lighting"][self.zone]
+        zone = (self.current_layer.get("matrix_zones", [zone_config() for _ in MATRIX_ZONES])[self.zone]
+                if self.zone < 5 else self.current_layer["lighting"][1])
         form.check("enabled", "LED-Gruppe einschalten", zone["enabled"])
         form.choice("effect", "Animation", zone["effect"], EFFECTS)
         form.color("color_a", "Farbe A", zone["color_a"])
@@ -982,12 +1009,19 @@ class Editor:
         form.entry("duration", "Triggerdauer in 10 ms (1–255)", zone["duration"], kind=int)
         form.apply(self.apply_lighting)
         button(form.parent, "Layerfarbe als Farbe A",
-               lambda: self.change(lambda p: p["layers"][self.layer]["lighting"][self.zone].__setitem__(
-                   "color_a", p["layers"][self.layer]["color"]))).pack(fill="x", padx=14, pady=4)
+               lambda: self.change(lambda p: (
+                   p["layers"][self.layer].setdefault(
+                       "matrix_zones", [zone_config() for _ in MATRIX_ZONES])[self.zone]
+                   if self.zone < 5 else p["layers"][self.layer]["lighting"][1]
+               ).__setitem__("color_a", p["layers"][self.layer]["color"]))).pack(
+                   fill="x", padx=14, pady=4)
 
     def select_zone(self, variable):
-        self.zone = 0 if variable.get().startswith("Main") else 1
+        choice = variable.get()
+        self.zone = next((i for i, name in enumerate(ZONE_NAMES)
+                          if choice.startswith(name)), 0)
         self.refresh_light_form()
+        self.draw_light_preview()
 
     def lighting_form_values(self):
         values = self.light_form.values()
@@ -998,8 +1032,11 @@ class Editor:
     def lighting_preview_zones(self):
         saved = self.current_layer["lighting"]
         try:
-            zones = list(saved)
-            zones[self.zone] = self.lighting_form_values()
+            zones = deepcopy(saved)
+            if self.zone == 5:
+                zones[1] = self.lighting_form_values()
+            elif self.zone < 5:
+                zones[0] = self.lighting_form_values()
             return zones, encode_lighting(zones)
         except ValueError:
             # A number can be temporarily empty or out of range while typing.
@@ -1025,12 +1062,22 @@ class Editor:
                 or (self.detection and self.detection.enabled)
                 or self.notebook.select() != str(self.light_page)):
             return None
+        # Legacy 0x79 previews the entire Main group, not a single matrix
+        # zone. Do not present a misleading hardware preview for zones 0..4.
+        if self.zone < 5:
+            return None
         return self.lighting_preview_zones()[1]
 
     def apply_lighting(self):
         try:
             values = self.lighting_form_values()
-            self.change(lambda p: p["layers"][self.layer]["lighting"][self.zone].update(values))
+            def apply(p):
+                layer = p["layers"][self.layer]
+                if self.zone < 5:
+                    layer.setdefault("matrix_zones", [zone_config() for _ in MATRIX_ZONES])[self.zone].update(values)
+                else:
+                    layer["lighting"][1].update(values)
+            self.change(apply)
         except ValueError as error:
             messagebox.showerror("Beleuchtung", str(error), parent=self.window)
 
@@ -1047,7 +1094,7 @@ class Editor:
             self.led_status.set("LED anklicken und ziehen · Pfeiltasten: 1 px · Shift: 5 px")
             return
         x, y = self.led_positions[self.led_selected]
-        group = "Main" if self.led_selected < MAIN_COUNT else "Frame"
+        group = ZONE_NAMES[self.led_zone_map[self.led_selected]] if self.led_selected < MAIN_COUNT else "Frame"
         self.led_status.set(
             f"LED {self.led_selected:02d} · {group} · X {x*100:.1f} % / Y {y*100:.1f} %")
 
@@ -1059,7 +1106,7 @@ class Editor:
         for index, point in enumerate(self.led_positions):
             x, y = to_canvas(point, width, height)
             distance2 = (event.x-x)**2 + (event.y-y)**2
-            limit = 17 if index < MAIN_COUNT else 13
+            limit = 12 if index < MAIN_COUNT else 13
             if distance2 <= limit**2:
                 hits.append((distance2, index))
         self.led_selected = min(hits)[1] if hits else None
@@ -1130,7 +1177,8 @@ class Editor:
     def reset_led_layout(self):
         if not messagebox.askyesno(
                 "LED-Anordnung zurücksetzen",
-                "Alle 57 LED-Positionen auf die Ausgangsansicht zurücksetzen?",
+                "Alle 73 LED-Positionen auf die Ausgangsansicht zurücksetzen?\n"
+                "Die 43 Frame-LEDs bleiben in ihrer bisherigen Nummernfolge.",
                 parent=self.window):
             return
         previous = deepcopy(self.led_positions)
@@ -1162,6 +1210,43 @@ class Editor:
                 write_positions(self.led_positions, Path(path))
             except (OSError, ValueError) as error:
                 messagebox.showerror("LED-Anordnung", str(error), parent=self.window)
+
+    def assign_led_zone(self):
+        if self.led_selected is None or self.led_selected >= MAIN_COUNT:
+            messagebox.showinfo("LED-Zone", "Bitte eine der Matrix-LEDs 0–29 auswählen.",
+                                parent=self.window)
+            return
+        if self.zone == 5:
+            messagebox.showinfo("LED-Zone", "Die Frame-Gruppe bleibt LED 30–72. "
+                                "Wähle eine der fünf Matrix-Zonen.", parent=self.window)
+            return
+        index = self.led_selected
+        if self.change(lambda p: p.setdefault("led_zone_map", default_zone_map()).__setitem__(
+                index, self.zone)):
+            self.led_zone_map = validate_zone_map(self.profile["led_zone_map"])
+            self.update_led_status()
+            self.draw_light_preview()
+
+    def set_matrix_order(self, order):
+        if not messagebox.askyesno(
+                "Matrix-Datenrichtung",
+                "Die ersten 30 LED-Positionen und Zonenzuordnungen werden neu "
+                "geordnet. Die 43 Frame-LEDs bleiben unverändert. Fortfahren?",
+                parent=self.window):
+            return
+        previous = deepcopy(self.led_positions)
+        desired = matrix_positions(order)
+        base_map = default_zone_map()
+        if order == "serpentine":
+            mapped = [base_map[row * 5 + (4-col if row % 2 else col)]
+                      for row in range(6) for col in range(5)]
+        else:
+            mapped = base_map
+        if self.change(lambda p: p.__setitem__("led_zone_map", mapped)):
+            self.led_zone_map = list(mapped)
+            self.led_positions = desired + self.led_positions[MAIN_COUNT:]
+            self.commit_led_positions(previous)
+            self.draw_light_preview()
 
     def draw_light_preview(self):
         if not hasattr(self, "light_canvas"):
@@ -1535,12 +1620,18 @@ class Editor:
         def write():
             atomic_json(USER_DATA / "backups" / f"profile-before-{datetime.now():%Y%m%d-%H%M%S}.json",
                         decode_profile(self.device.read_profile()) if self.capabilities["enabled"] else captured)
-            return self.device.write_profile(payload, generation, lambda done, size: self.progress.put((done, size)))
+            caps = self.device.write_profile(payload, generation, lambda done, size: self.progress.put((done, size)))
+            if not caps.get("matrix_zones"):
+                raise ViaError("Firmware unterstützt die 30-Matrix-LED-Zonen noch nicht. "
+                               "Das Geräteprofil ist gespeichert, aber die LED-Zonen fehlen.")
+            self.device.write_matrix_zones(captured)
+            return caps
         def saved(capabilities):
             self.capabilities = capabilities
             self.generation = capabilities["generation"]
             self.on_device = payload
             self.active_profile = captured
+            self.led_zone_map = list(captured.get("led_zone_map", default_zone_map()))
             atomic_json(USER_DATA / "last-device.omnipad.json", captured)
             start = captured["default_layer"]
             name = captured["layers"][start]["name"]
