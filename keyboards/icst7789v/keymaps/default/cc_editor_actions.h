@@ -367,6 +367,11 @@ static void omp_slider_update(int16_t value) {
         if (slider->mode != 2) omp_brightness_override[1] = brightness;
         omp_slider_reference = value;
         omp_event(8);
+    } else if (slider->mode == 5) {
+        // Host-controlled absolute Windows volume: no relative VOLU/VOLD
+        // events. The desktop app consumes the existing slider telemetry.
+        omp_slider_reference = value;
+        omp_event(8);
     } else if (slider->mode == 1 && (delta >= slider->step || delta <= -(int16_t)slider->step)) {
         omp_tap(delta > 0 ? slider->high : slider->low);
         omp_slider_reference += delta > 0 ? slider->step : -(int16_t)slider->step;
