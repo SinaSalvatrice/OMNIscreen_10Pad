@@ -31,6 +31,7 @@ from led_layout import (LED_COUNT, MAIN_COUNT, LED_LAYOUT_PATH, default_position
 from tester import Tester
 from ui_helpers import BG, PANEL, KEY, TEXT, MUTED, ACCENT, Form, ScrollPanel, button, label, style
 from via import OmniPad, ViaError, UnsupportedCommand
+from windows_volume import set_master_volume_percent, WindowsVolumeError
 
 
 class Editor:
@@ -59,6 +60,7 @@ class Editor:
         self.on_device = None
         self.active_profile = None
         self.preview_phase = 0
+        self.volume_last_sent = None
         self.preview_sent = None
         self.preview_renew_at = 0
         self.led_selected = None
@@ -703,12 +705,16 @@ class Editor:
             form.entry("step", "Abstand pro Tastenschritt (1–255)", slider["step"], kind=int)
             form.entry("low", "Aktion abwärts", f"0x{slider['low']:04X}", kind="code")
             form.entry("high", "Aktion aufwärts", f"0x{slider['high']:04X}", kind="code")
-            for caption, mode, low, high in (("Zoom", 1, 0x0156, 0x0157),
-                                            ("Lautstärke", 1, 0xAA, 0xA9),
+            for caption, mode, low, high in (("Zoom (relativ)", 1, 0x0156, 0x0157),
+                                            ("Lautstärke (relativ)", 1, 0xAA, 0xA9),
+                                            ("Lautstärke Windows 0-100 %", 5, 0, 0),
                                             ("Mausrad", 1, 0xDB, 0xDA)):
                 button(form.parent, caption, lambda m=mode, lo=low, hi=high:
                        self.change(lambda p: p["layers"][self.layer]["slider"].update(mode=m, low=lo, high=hi))).pack(
                            fill="x", padx=14, pady=3)
+            form.note("Windows 0-100 %: setzt die Lautstärke exakt nach Reglerposition.\n"
+                      "Benötigt die laufende OmniPad-App und die neue Firmware.\n"
+                      "Ohne App funktionieren weiterhin nur relative Lauter/Leiser-Tasten.")
             button(form.parent, "Live-Wert als Minimum", lambda: self.calibrate("min")).pack(fill="x", padx=14, pady=3)
             button(form.parent, "Live-Wert als Maximum", lambda: self.calibrate("max")).pack(fill="x", padx=14, pady=3)
         form.apply(self.apply_key_form)
@@ -1343,6 +1349,27 @@ class Editor:
     def detected(self, value):
         previous = self.detection
         self.detection = value
+        # Absolute Windows volume is an explicitly opted-in host-side mode.
+        # A new connection or layer change must not cause a volume jump.
+        if (self.active_profile and value.enabled and not self.tester_page.active and
+                value.slider_raw is not None and
+                value.active_layer < len(self.active_profile["layers"])):
+            selected_slider = self.active_profile["layers"][value.active_layer]["slider"]
+            if selected_slider["mode"] == 5 and previous is not None and (
+                    previous.active_layer == value.active_layer and
+                    previous.slider_raw is not None):
+                target = value.slider_percent
+                if (target != previous.slider_percent and
+                        (self.volume_last_sent is None or target != self.volume_last_sent)):
+                    try:
+                        set_master_volume_percent(target)
+                        self.volume_last_sent = target
+                    except (OSError, WindowsVolumeError) as error:
+                        self.status.set(f"Windows-Lautstärke konnte nicht gesetzt werden: {error}")
+            else:
+                self.volume_last_sent = None
+        else:
+            self.volume_last_sent = None
         if previous == value:
             return
         if previous is None or previous.active_layer != value.active_layer:
