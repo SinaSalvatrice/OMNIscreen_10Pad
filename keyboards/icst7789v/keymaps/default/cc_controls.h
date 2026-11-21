@@ -34,8 +34,14 @@ static bool omp_device_action(uint16_t code, bool pressed) {
         case OMP_ACTION_HELP:
         case OMP_ACTION_COLORS:
             cc_switch_encoder(true);
-            if (code == OMP_ACTION_LAYERS) cc_screen_selection = CC_SCREEN_LAYERS;
-            if (code == OMP_ACTION_CUSTOM_SCREEN) cc_screen_selection = CC_SCREEN_CUSTOM;
+            if (code == OMP_ACTION_LAYERS) {
+                cc_screen_selection = CC_SCREEN_LAYERS;
+                cc_home_view = false;
+            }
+            if (code == OMP_ACTION_CUSTOM_SCREEN) {
+                cc_screen_selection = CC_SCREEN_CUSTOM;
+                cc_home_view = false;
+            }
             if (code == OMP_ACTION_HELP) cc_help_view = true;
             if (code == OMP_ACTION_COLORS) cc_color_view = true;
             break;
@@ -43,6 +49,7 @@ static bool omp_device_action(uint16_t code, bool pressed) {
             cc_activate_layer(omp_profile.default_layer);
             cc_switch_encoder(true);
             cc_screen_selection = CC_SCREEN_AUTO;
+            cc_home_view = true;
             break;
         case OMP_ACTION_NAVIGATION:
             cc_switch_encoder(true);
