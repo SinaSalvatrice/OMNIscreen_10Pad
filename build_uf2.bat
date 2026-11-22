@@ -58,9 +58,9 @@ if not exist "%QMK_BASH%" (
 )
 where py >nul 2>nul
 if not errorlevel 1 (
-    py -3 "%PROJECT_ROOT%\scripts\generate_layer_system.py"
+    py -3 "%PROJECT_ROOT%\scripts\generate_layer_system.py" --no-previews
 ) else (
-    python "%PROJECT_ROOT%\scripts\generate_layer_system.py"
+    python "%PROJECT_ROOT%\scripts\generate_layer_system.py" --no-previews
 )
 if errorlevel 1 (
     echo ERROR: Layer metadata generation failed.
