@@ -29,7 +29,7 @@ static const cc_key_shape_t cc_key_shapes[CC_KEY_COUNT] = {
   {266, 150, 43, 47},
 };
 static const uint8_t cc_matrix_row[CC_KEY_COUNT] = {0, 0, 0, 0, 1, 1, 1, 1, 2, 2};
-static const uint8_t cc_matrix_col[CC_KEY_COUNT] = {0, 1, 2, 3, 0, 1, 2, 3, 1, 3};
+static const uint8_t cc_matrix_col[CC_KEY_COUNT] = {0, 1, 2, 3, 0, 1, 2, 3, 2, 3};
 static const cc_layer_desc_t cc_layers[CC_LAYER_COUNT] = {
   {"CCSTUDIO", 0xCC2B,
    {"HIDE", "LOCK", "PLAY", "VIEW", "SHIFT", "COMP", "ANIM", "PICK", "CTRL", "ALT"},
