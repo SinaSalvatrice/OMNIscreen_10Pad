@@ -192,6 +192,12 @@ static void cc_macro_playback(void) {
     cc_dirty = true;
 }
 static void cc_single_tap(uint8_t index, uint8_t origin, uint16_t code) {
+    if (omp_enabled && origin < omp_profile.layer_count) {
+        // Preserve the app's configured primary action without needing a
+        // running desktop process. Double-tap layer entry stays in firmware.
+        omp_tap(code);
+        return;
+    }
     if (origin == CC_MACRO_LAYER) {
         if (index < 4) cc_macro_action(index);
         if (index >= 5 && index <= 7) cc_macro_action(index - 1);
@@ -201,7 +207,7 @@ static void cc_single_tap(uint8_t index, uint8_t origin, uint16_t code) {
     if (code != KC_NO && code != KC_TRNS) tap_code16(code);
 }
 static bool cc_td_event(uint8_t index, bool pressed) {
-    if (omp_enabled || cc_internal_mode || index >= CC_KEY_COUNT) return false;
+    if (cc_internal_mode || index >= CC_KEY_COUNT) return false;
     if (index == 8 && cc_active != 4 && cc_active != CC_MACRO_LAYER) return false;
     if (index != 8 && cc_td_dest[index] == 255) return false;
     cc_td_t *s = &cc_td[index];
@@ -215,7 +221,8 @@ static bool cc_td_event(uint8_t index, bool pressed) {
             s->pending = false;
         }
         s->origin = cc_active;
-        s->code = dynamic_keymap_get_keycode(cc_active, cc_matrix_row[index], cc_matrix_col[index]);
+        s->code = omp_enabled ? omp_profile.layers[cc_active].keys[index].codes[0] :
+                  dynamic_keymap_get_keycode(cc_active, cc_matrix_row[index], cc_matrix_col[index]);
         s->started = timer_read();
         s->down = true; s->held = s->second = false;
     } else if (s->down) {
@@ -229,7 +236,10 @@ static bool cc_td_event(uint8_t index, bool pressed) {
             s->held = false;
             if (s->origin == CC_NAV_LAYER && index == 1) unregister_code(KC_PGDN);
             else if (s->code != KC_NO && s->code != KC_TRNS &&
-                     s->origin != CC_MACRO_LAYER) unregister_code16(s->code);
+                     s->origin != CC_MACRO_LAYER) {
+                if (omp_enabled) omp_emit(s->code, false);
+                else unregister_code16(s->code);
+            }
         } else {
             s->pending = true; s->released = timer_read();
         }
@@ -244,7 +254,10 @@ static void cc_td_tick(void) {
             s->held = true;
             if (s->origin == CC_NAV_LAYER && i == 1) register_code(KC_PGDN);
             else if (s->origin != CC_MACRO_LAYER &&
-                     s->code != KC_NO && s->code != KC_TRNS) register_code16(s->code);
+                     s->code != KC_NO && s->code != KC_TRNS) {
+                if (omp_enabled) omp_emit(s->code, true);
+                else register_code16(s->code);
+            }
         }
         if (s->pending && !s->down && timer_elapsed(s->released) >= cc_tap_term()) {
             cc_single_tap(i, s->origin, s->code);
