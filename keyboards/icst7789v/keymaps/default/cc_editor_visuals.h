@@ -36,20 +36,30 @@ static rgb_t omp_mix(rgb_t a, rgb_t b, uint8_t blend) {
     };
 }
 
+// Five independently configured matrix zones plus the existing Frame zone.
+// Every physical LED is written exactly once and the 73-pixel chain flushed once.
 static void omp_lighting_tick(bool preview) {
     if (timer_elapsed(omp_light_timer) < 30u) return;
     omp_light_timer = timer_read();
     ++omp_phase;
-    // QMK's main animation must not overwrite either editor-controlled zone.
     if (!preview) {
         if (!omp_qmk_lighting_override && !rgblight_is_enabled()) rgblight_enable_noeeprom();
-        if (rgblight_get_mode() != RGBLIGHT_MODE_STATIC_LIGHT) rgblight_mode_noeeprom(RGBLIGHT_MODE_STATIC_LIGHT);
+        if (rgblight_get_mode() != RGBLIGHT_MODE_STATIC_LIGHT)
+            rgblight_mode_noeeprom(RGBLIGHT_MODE_STATIC_LIGHT);
     }
-    for (uint8_t zone = 0; zone < 2; ++zone) {
-        const omp_zone_t *z = preview ? &omp_preview_zones[zone] : &omp_profile.layers[cc_active].zones[zone];
-        uint8_t count = zone ? CC_RGB_FRAME_LED_COUNT : CC_RGB_MAIN_LED_COUNT;
-        uint8_t start = zone ? CC_RGB_FRAME_LED_START : 0;
-        uint8_t brightness = preview || omp_brightness_override[zone] == 255 ? z->brightness : omp_brightness_override[zone];
+    for (uint8_t zone = 0; zone < 6; ++zone) {
+        bool frame = zone == 5;
+        const omp_zone_t *z = preview ? &omp_preview_zones[frame ? 1 : 0] :
+            frame ? &omp_profile.layers[cc_active].zones[1] :
+                    &cc_rgb.matrix_zones[cc_active][zone];
+        uint8_t count = frame ? CC_RGB_FRAME_LED_COUNT : 0;
+        if (!frame) {
+            for (uint8_t i = 0; i < CC_RGB_MAIN_LED_COUNT; ++i)
+                if (cc_rgb.zone_map[i] == zone) ++count;
+        }
+        if (!count) continue; // A valid zone may temporarily have no assigned pixels.
+        uint8_t brightness = preview || omp_brightness_override[frame ? 1 : 0] == 255
+            ? z->brightness : omp_brightness_override[frame ? 1 : 0];
         uint16_t phase = ((uint32_t)timer_read() * (z->speed + 16u) / 1024u);
         uint16_t elapsed = timer_elapsed(omp_trigger_at);
         uint16_t duration = (uint16_t)z->duration * 10u;
@@ -57,32 +67,35 @@ static void omp_lighting_tick(bool preview) {
         uint8_t effect = z->effect;
         bool enabled = z->flags & 1u;
         rgb_t a = omp_rgb(z->color_a), b = omp_rgb(z->color_b);
-        if (!preview && zone == 0 && omp_qmk_lighting_override) {
+        if (!preview && !frame && omp_qmk_lighting_override) {
             brightness = rgblight_get_val();
             if (brightness > RGBLIGHT_LIMIT_VAL) brightness = RGBLIGHT_LIMIT_VAL;
             enabled = rgblight_is_enabled();
             effect = omp_qmk_effect;
             a = hsv_to_rgb((hsv_t){rgblight_get_hue(), rgblight_get_sat(), 255});
         }
-        for (uint8_t led = 0; led < count; ++led) {
-            uint8_t position = (z->flags & 2u) ? count - 1u - led : led;
+        uint8_t position_in_zone = 0;
+        for (uint8_t led = 0; led < RGBLIGHT_LED_COUNT; ++led) {
+            if (frame ? led < CC_RGB_FRAME_LED_START :
+                        (led >= CC_RGB_MAIN_LED_COUNT || cc_rgb.zone_map[led] != zone))
+                continue;
+            uint8_t position = (z->flags & 2u) ? count - 1u - position_in_zone : position_in_zone;
+            ++position_in_zone;
             uint8_t wave = 0;
             uint8_t level = brightness;
             switch (effect) {
                 case 1: wave = (position & 1u) ? 255 : 0; break;
                 case 2: wave = position >= count / 2u ? 255 : 0; break;
-                case 3: wave = (uint16_t)position * 255u / (count - 1u); break;
+                case 3: wave = count > 1 ? (uint16_t)position * 255u / (count - 1u) : 0; break;
                 case 4: wave = ((position + phase) % count) < 4u ? 0 : 255; break;
                 case 5: {
                     uint8_t breath = phase & 255u;
                     wave = breath < 128u ? breath * 2u : (255u - breath) * 2u;
                     level = (uint16_t)brightness * (32u + wave * 7u / 8u) / 255u;
-                    wave = 0;
-                    break;
+                    wave = 0; break;
                 }
                 case 6: {
                     uint8_t distance = (position + count - phase % count) % count;
-                    wave = 0;
                     level = distance < 8u ? (uint16_t)brightness * (8u - distance) / 8u : brightness / 16u;
                     break;
                 }
@@ -90,7 +103,8 @@ static void omp_lighting_tick(bool preview) {
                 default: break;
             }
             rgb_t color = omp_mix(a, b, wave);
-            if (effect == 8) color = hsv_to_rgb((hsv_t){(uint8_t)(position * 256u / count + phase), 255, 255});
+            if (effect == 8)
+                color = hsv_to_rgb((hsv_t){(uint8_t)(position * 256u / count + phase), 255, 255});
             if (triggered) {
                 uint8_t center = omp_trigger == 2 ? omp_encoder_position % count :
                     (omp_last_key < OMP_KEYS ? (uint16_t)omp_last_key * count / OMP_KEYS : 0);
@@ -98,18 +112,18 @@ static void omp_lighting_tick(bool preview) {
                 if (omp_trigger == 2 && omp_encoder_direction < 0) step = -step;
                 int16_t head = (center + step + count * 8u) % count;
                 uint8_t distance = (position + count - head) % count;
-                if (distance < 6) {
+                if (distance < 6u) {
                     uint8_t blend = (uint32_t)(duration - elapsed) * (6u - distance) * 255u / (duration * 6u);
                     color = omp_mix(color, b, blend);
                 }
             }
             if (!enabled) level = 0;
-            rgblight_driver.set_color(start + led, (uint16_t)color.r * level / 255u,
+            rgblight_driver.set_color(led, (uint16_t)color.r * level / 255u,
                 (uint16_t)color.g * level / 255u, (uint16_t)color.b * level / 255u);
         }
     }
     if (preview) rgblight_driver.flush();
-    else rgblight_set(); // One flush for the complete chain.
+    else rgblight_set();
 }
 
 static uint32_t omp_screen_generation = UINT32_MAX;

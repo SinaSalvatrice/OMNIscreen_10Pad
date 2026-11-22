@@ -164,3 +164,64 @@ Profilübertragung erfolgt weiterhin mit „Auf Pad speichern“.
 **Einmaliger Firmwarewechsel erforderlich**, um das neue
 6-Screen-Profil zu verstehen. Die alte Firmware akzeptiert die neue
 Profilgröße nicht. Vor dem Flashen den aktuellen Entwurf exportieren.
+
+
+## Hardware 6×5-Matrix + Frame: 73 LEDs, getrennte Lichtzonen
+
+Die serielle Datenkette an **GP29** besteht jetzt aus **30 Matrix-LEDs**
+(physische LED-IDs **0–29**) und den bisherigen **43 unveränderten
+Frame-LEDs** (neue IDs **30–72**, vorher 14–56). Frame-DIN wird mit dem
+DOUT von LED 29 verbunden; seine eigene 43er-Reihenfolge bleibt erhalten.
+
+Die Matrix ist als 6 Reihen × 5 Spalten angelegt. Die Verkabelung
+kann **zeilenweise oder zickzack** verlaufen. Aus einem Foto lässt sich
+die tatsächliche Datenrichtung nicht ablesen; deshalb im Beleuchtungseditor
+über die Schaltflächen **Zeilenweise** oder **Zickzack** die
+Vorschau zunächst passend ordnen und gegebenenfalls einzelne
+LEDs mit der Maus verschieben. Eine Positionsänderung am PC ändert keine
+Datenleitungen und keine Nummern am echten Strip.
+
+**Sechs auswählbare Lichtgruppen:**
+1. Tasten (standardmäßig 16 Matrix-Pixel)
+2. Regler (3 Matrix-Pixel)
+3. Encoder (2 Matrix-Pixel)
+4. K0 (2 Matrix-Pixel)
+5. Display (7 Matrix-Pixel)
+6. Frame (43 bisherige Frame-Pixel)
+
+Die Zahlen sind nur eine **Startverteilung**. In der Vorschau eine
+Matrix-LED 0–29 wählen, die Zielzone auswählen und
+**LED → gewählte Zone** anklicken. Die Zuordnung wird mit dem
+Profil gespeichert und an die Firmware übertragen. **Frame-LEDs 30–72
+können nicht versehentlich in eine Matrix-Zone verschoben werden.**
+
+Für jede Matrix-Zone und jeden Layer lassen sich Farbe A/B,
+Animation, Helligkeit, Richtung, Geschwindigkeit und Trigger getrennt
+einstellen. Die bereits vorhandene Frame-Zone bleibt pro Layer
+unabhängig. Der bestehende 6124-Byte-Profilblock wird nicht vergrößert;
+die fünf × zwölf zusätzlichen Matrix-Zonen und ihre Zuordnung liegen in
+einem **separaten 651-Byte-QMK-User-EEPROM-Block**. Die ersten 17 Bytes
+der bisherigen Main-/Frame-Einstellungen bleiben an ihrer alten
+Position. Beim ersten Start wird eine fehlende Matrix-Erweiterung
+mit sicheren Standardwerten initialisiert.
+
+**Übertragen:** Für die neue Hardware einmalig die neue UF2 flashen,
+dann in der App **Auf Pad speichern**. Die App schreibt das bisherige
+Profil und anschließend die Matrix-Zonen, liest beide zurück und meldet
+Abweichungen. Die bisherige 0x79-Livevorschau kann nur *Main insgesamt*
+oder *Frame* previewen. Deshalb zeigt die App einzelne Matrix-Zonen
+vor dem Speichern korrekt in der PC-Vorschau statt fälschlich als
+vollständige Hardware-Livevorschau.
+
+**Achtung bei der EEPROM-Umstellung:** Der QMK-User-Block wird größer.
+Dadurch können ältere VIA-Bereiche an neue Adressen rücken. Vor dem
+Flashen **OmniPad-Profil und VIA-Sicherung exportieren**, neue
+Firmware erst nach erfolgreichem Build aufspielen. Die zwei
+transaktionalen OmniPad-Profilspeicher ab Adresse 4096 bleiben
+unverändert. Die neue Firmware darf nicht ohne Kontrolle auf ein Pad
+mit unbekannter EEPROM-Belegung geflasht werden.
+
+**Stromversorgung:** 73 RGB-LEDs dürfen nicht aus dem 3,3-V-Ausgang
+des RP2040 gespeist werden. Externe, ausreichend dimensionierte
+5-V-Versorgung mit gemeinsamer Masse und Strombegrenzung verwenden.
+Der QMK-Helligkeitsgrenzwert bleibt vorsichtig auf 64/255.

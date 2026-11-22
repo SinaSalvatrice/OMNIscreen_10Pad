@@ -56,7 +56,7 @@ static bool omp_command(uint8_t *data, uint8_t length) {
         data[10] = sizeof(omp_profile) >> 8;
         memcpy(&data[11], &omp_generation, 4);
         data[15] = CC_PCF8575_MATRIX;
-        data[16] = 7; // LED preview, device actions, multi-screen styling.
+        data[16] = 15; // LED preview, device actions, screens, 30-pixel matrix zones.
         return true;
     }
     if (id == 0x72 && get && omp_enabled) {

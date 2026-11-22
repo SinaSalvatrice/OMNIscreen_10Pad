@@ -93,7 +93,7 @@ class LayerOperationsTests(unittest.TestCase):
         move_layer(self.p, 1, 3)
         delete_layer(self.p, 0)
         # New wire format remains fixed-size even if the count changes.
-        self.assertEqual(len(encode_profile(self.p)), 6084)
+        self.assertEqual(len(encode_profile(self.p)), 6124)
 
 
 if __name__ == "__main__":

@@ -75,20 +75,21 @@ if [[ ! -s "$UF2" ]]; then
     exit 3
 fi
 
-build_dir="$PROJECT_ROOT/build"
+# Publish atomically to the one shared output directory, including when
+# invoked from a detached development worktree.
+build_dir="$(to_msys_path "${BUILD_OUTPUT_DIR:-$PROJECT_ROOT/build}")"
 mkdir -p "$build_dir"
 published_uf2="$build_dir/OmniPad.uf2"
-temporary_uf2="$(mktemp "$build_dir/.OmniPad.XXXXXXXX")"
+temporary_uf2="$(mktemp "$build_dir/.OmniPad.XXXXXXXX.tmp")"
 trap 'rm -f -- "$temporary_uf2"' EXIT
 cp -- "$UF2" "$temporary_uf2"
+test -s "$temporary_uf2"
 mv -f -- "$temporary_uf2" "$published_uf2"
 
-# Keep exactly one UF2 in the project's build tree. Historical UF2 files
-# are generated artifacts, not source; remove them after a successful build.
-find "$build_dir" -type f -iname '*.uf2' ! -path "$published_uf2" -delete
-if [[ -d "$build_dir/Archiv" ]]; then
-    find "$build_dir/Archiv" -depth -type d -empty -delete
-fi
-
+# QMK intermediate copies must not linger as alternate flash files.
+rm -f -- "$UF2" "$QMK_HOME/.build/${KEYBOARD}_${KEYMAP}.uf2"
+# Retain only the canonical UF2 and single build log; never create an Archiv.
+find "$build_dir" -type f \( -iname '*.uf2' -o -iname '*.log' \) \
+    ! -path "$published_uf2" ! -path "$build_dir/OmniPad-build.log" -delete
 echo
 echo "SUCCESS: $published_uf2"

@@ -127,7 +127,7 @@ class Tester(tk.Frame):
             return
         pins = self.display_pins if output == 1 else self.pins["WS2812_DI_PIN"]
         name = ("Display", "Main-LEDs", "Frame-LEDs")[output - 1]
-        detail = ("Farbfelder", "LED 0–13", "LED 14–56")[output - 1]
+        detail = ("Farbfelder", "Matrix LED 0–29", "Frame LED 30–72")[output - 1]
         self.editor.submit(lambda: pad.test_output(output), lambda _: self.add(
             name, pins, f"{detail} · Testausgabe gesendet · Sichtprüfung"))
 
