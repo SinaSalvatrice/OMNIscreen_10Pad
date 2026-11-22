@@ -6,6 +6,7 @@ Requires Python 3.9+ stdlib only. Runs locally; never calls GitHub Actions.
 """
 import json
 import re
+import sys
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -151,10 +152,15 @@ def main():
     validate(data)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(generate_header(data),encoding="utf-8")
-    preview(data,0,"cc_studio.svg")
-    preview(data,1,"default.svg")
-    preview(data,6,"settings.svg")
-    print("Generated eight VIA layer descriptions and screen previews.")
+    # Firmware builds regenerate metadata only. Explicit preview updates are
+    # a separate design task; never dirty tracked SVGs during UF2 compilation.
+    if "--no-previews" not in sys.argv[1:]:
+        preview(data,0,"cc_studio.svg")
+        preview(data,1,"default.svg")
+        preview(data,6,"settings.svg")
+        print("Generated eight VIA layer descriptions and screen previews.")
+    else:
+        print("Generated eight VIA layer descriptions (preview SVGs unchanged).")
 
 if __name__ == "__main__":
     main()
