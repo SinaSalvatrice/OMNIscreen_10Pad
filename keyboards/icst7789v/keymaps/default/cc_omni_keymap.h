@@ -1,7 +1,7 @@
 // Standalone hardware-first keymap; the OmniPad app remains optional.
 // Included from cc_controls.h after cc_runtime.h and the RGB/OMP modules.
 #pragma once
-#include "process_dynamic_macro.h"
+// Seven built-in slots per bank work without a configured VIA/OMP profile.
 
 #define CC_MEDIA_LAYER 7
 #define CC_RGB_LAYER 6
@@ -18,6 +18,9 @@ static cc_td_t cc_td[CC_KEY_COUNT];
 static const uint8_t cc_td_dest[CC_KEY_COUNT] = {1, 2, 3, 4, 255, 7, 7, 5, 0, 255};
 static uint8_t cc_macro_bank;
 static bool cc_macro_recording;
+static uint8_t cc_macro_recorded[48];
+static uint8_t cc_macro_recorded_count;
+static bool cc_macro_playing;
 static bool cc_enc_down, cc_enc_moved, cc_nav_alt_down;
 static uint16_t cc_nav_alt_at;
 static bool cc_rgb_preview_active;
@@ -155,27 +158,39 @@ static void cc_rgb_key(uint8_t index) {
     cc_dirty = true;
 }
 static void cc_macro_action(uint8_t slot) {
+    if (slot >= 7) return;
+    if (cc_macro_recording && !cc_macro_playing) {
+        if (cc_macro_recorded_count < sizeof(cc_macro_recorded))
+            cc_macro_recorded[cc_macro_recorded_count++] = (cc_macro_bank ? 7 : 0) + slot;
+        cc_dirty = true;
+        return;
+    }
     static const uint16_t a[7] = {LCTL(KC_C), LCTL(KC_V), LCTL(KC_X), LCTL(KC_A),
                                    LCTL(KC_S), LCTL(KC_Y), LCTL(KC_Z)};
     static const uint16_t b[7] = {LGUI(KC_E), LGUI(KC_D), LGUI(LSFT(KC_S)),
                                    LGUI(KC_V), LCTL(LSFT(KC_S)), LCTL(KC_T), LCTL(KC_W)};
-    if (slot < 7) tap_code16(cc_macro_bank ? b[slot] : a[slot]);
+    tap_code16(cc_macro_bank ? b[slot] : a[slot]);
 }
-static void cc_macro_command(uint16_t keycode) {
-    keyrecord_t record = {0};
-    record.event.type = KEY_EVENT;
-    record.event.pressed = true;
-    record.event.time = timer_read();
-    (void)process_dynamic_macro(keycode, &record);
-    record.event.pressed = false;
-    record.event.time = timer_read();
-    (void)process_dynamic_macro(keycode, &record);
+static void cc_macro_playback(void) {
+    cc_macro_playing = true;
+    const uint8_t previous_bank = cc_macro_bank;
+    if (cc_macro_recorded_count) {
+        for (uint8_t i = 0; i < cc_macro_recorded_count; ++i) {
+            cc_macro_bank = cc_macro_recorded[i] / 7u;
+            cc_macro_action(cc_macro_recorded[i] % 7u);
+        }
+    } else {
+        cc_macro_action(cc_internal_selected % 7u);
+    }
+    cc_macro_bank = previous_bank;
+    cc_macro_playing = false;
+    cc_dirty = true;
 }
 static void cc_single_tap(uint8_t index, uint8_t origin, uint16_t code) {
     if (origin == CC_MACRO_LAYER) {
         if (index < 4) cc_macro_action(index);
         if (index >= 5 && index <= 7) cc_macro_action(index - 1);
-        if (index == 8) cc_macro_command(DM_PLY1);
+        if (index == 8) cc_macro_playback();
         return;
     }
     if (code != KC_NO && code != KC_TRNS) tap_code16(code);
@@ -305,7 +320,7 @@ static bool cc_special_key(uint8_t index, bool pressed) {
     if (omp_enabled) return false;
     if (cc_active == CC_MACRO_LAYER && index == 4) {
         if (pressed) {
-            cc_macro_command(cc_macro_recording ? DM_RSTP : DM_REC1);
+            if (!cc_macro_recording) cc_macro_recorded_count = 0;
             cc_macro_recording = !cc_macro_recording;
             cc_dirty = true;
         }
