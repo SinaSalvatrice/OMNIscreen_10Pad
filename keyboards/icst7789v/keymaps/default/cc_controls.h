@@ -161,7 +161,8 @@ static void cc_encoder_press_action(void) {
         cc_activate_layer(cc_preview);
     } else {
         uint16_t kc = cc_layers[cc_active].encoder_press;
-        if (kc != KC_NO) tap_code16(kc);
+        if (kc == MS_BTN1) cc_mouse_left_click();
+        else if (kc != KC_NO) tap_code16(kc);
     }
 }
 
