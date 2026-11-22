@@ -81,17 +81,12 @@ trap 'rm -f -- "$temporary_uf2"' EXIT
 cp -- "$UF2" "$temporary_uf2"
 mv -f -- "$temporary_uf2" "$published_uf2"
 
-# Move old project outputs aside only after the new firmware has been published.
-archive_dir=""
-for old_uf2 in "$build_dir"/ICST7789V.uf2 "$build_dir"/ICST7789V_*.uf2 \
-               "$build_dir"/OmniPad-*.uf2 "$build_dir"/OMNIscreen_10Pad_*.uf2; do
-    [[ -f "$old_uf2" ]] || continue
-    if [[ -z "$archive_dir" ]]; then
-        mkdir -p "$build_dir/Archiv"
-        archive_dir="$(mktemp -d "$build_dir/Archiv/UF2-XXXXXXXX")"
-    fi
-    mv -- "$old_uf2" "$archive_dir/"
-done
+# Keep exactly one UF2 in the project's build tree. Historical UF2 files
+# are generated artifacts, not source; remove them after a successful build.
+find "$build_dir" -type f -iname '*.uf2' ! -path "$published_uf2" -delete
+if [[ -d "$build_dir/Archiv" ]]; then
+    find "$build_dir/Archiv" -depth -type d -empty -delete
+fi
 
 echo
 echo "SUCCESS: $published_uf2"
