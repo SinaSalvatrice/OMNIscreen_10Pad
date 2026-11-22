@@ -442,14 +442,21 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
         for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
             if (cc_matrix_row[i] != row || cc_matrix_col[i] != col) continue;
             cc_last_key = i;
-            cc_dirty = true;
+            // A Home-screen press must not force a costly full TFT redraw.
+            // On the layer view, key highlights remain responsive.
+            if (!cc_home_view) cc_dirty = true;
             if (cc_special_key(i, record->event.pressed)) return false;
-            if (cc_td_event(i, record->event.pressed)) return false;
+            // Fixed K5/K9/K10 have priority over profile and fallback
+            // gestures. K9 is matrix (2,2), never the vacant (2,1).
             if (cc_handle_fixed_modifier(row, col, record->event.pressed)) return false;
             if (omp_enabled) {
+                // Exactly one gesture engine can own an event. The former
+                // ordering sent K1-K8 through cc_td_event and silently
+                // bypassed saved OmniPad Tap Dance / multi-slot actions.
                 omp_key_event(i, record->event.pressed);
                 return false;
             }
+            if (cc_td_event(i, record->event.pressed)) return false;
             break;
         }
         return true;

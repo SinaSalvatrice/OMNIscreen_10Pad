@@ -206,7 +206,7 @@ static bool omp_key_event(uint8_t index, bool pressed) {
         omp_last_key = index;
         omp_last_gesture = 0;
         omp_event(1);
-        cc_dirty = true;
+        if (!cc_home_view) cc_dirty = true;
         if (state->key.mode == 0) {
             uint16_t code = state->key.codes[0];
             if (code >= QK_MACRO_0 && code <= QK_MACRO_15) omp_tap(code);
@@ -240,7 +240,7 @@ static bool omp_key_event(uint8_t index, bool pressed) {
             ++state->taps;
             if (state->taps >= 4) omp_finish_dance(index);
         }
-        cc_dirty = true;
+        if (!cc_home_view) cc_dirty = true;
     }
     return true;
 }
