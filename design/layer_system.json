@@ -143,7 +143,7 @@
       "encoder": {
         "ccw": "MS_WHLU",
         "cw": "MS_WHLD",
-        "press": "KC_BTN1"
+        "press": "MS_BTN1"
       }
     },
     {
@@ -220,7 +220,7 @@
       "encoder": {
         "ccw": "MS_WHLU",
         "cw": "MS_WHLD",
-        "press": "KC_BTN1"
+        "press": "MS_BTN1"
       }
     },
     {
@@ -373,7 +373,7 @@
       "encoder": {
         "ccw": "KC_LEFT",
         "cw": "KC_RGHT",
-        "press": "KC_BTN1"
+        "press": "MS_BTN1"
       }
     },
     {
@@ -491,7 +491,7 @@
         },
         {
           "label": "REC",
-          "tap": "DM_REC1",
+          "tap": "KC_NO",
           "hold": "KC_NO"
         },
         {
@@ -511,7 +511,7 @@
         },
         {
           "label": "PLAY",
-          "tap": "DM_PLY1",
+          "tap": "KC_NO",
           "hold": "KC_NO"
         },
         {
