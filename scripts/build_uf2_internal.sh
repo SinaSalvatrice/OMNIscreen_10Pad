@@ -44,7 +44,10 @@ python3 "$PROJECT_ROOT/scripts/check_standalone_keymap.py"
 cd "$QMK_HOME"
 
 echo "QMK_HOME: $QMK_HOME"
-echo "Initializing only the submodules needed by RP2040 + USB + Quantum Painter..."
+echo "Checking RP2040/QMK submodules (offline when already present)..."
+# Running `git submodule update --checkout` on every single build may contact
+# the network or stall even when the five pinned dependencies are ready.
+# Check their actual HEAD against the parent QMK gitlink first.
 for module in \
     lib/chibios \
     lib/chibios-contrib \
@@ -52,7 +55,26 @@ for module in \
     lib/lufa \
     lib/printf
 do
-    git submodule update --init --checkout "$module"
+    expected="$(git ls-tree HEAD -- "$module" | awk '{print $3}')"
+    if [[ -z "$expected" ]]; then
+        echo "ERROR: Missing QMK submodule definition for $module" >&2
+        exit 6
+    fi
+    actual=""
+    if [[ -e "$module/.git" ]]; then
+        actual="$(git -C "$module" rev-parse HEAD 2>/dev/null || true)"
+    fi
+    if [[ "$actual" == "$expected" ]]; then
+        echo "  OK (already initialized): $module"
+    else
+        echo "  Initializing/repairing $module; this may require network access..."
+        GIT_TERMINAL_PROMPT=0 git submodule update --init --checkout -- "$module"
+        actual="$(git -C "$module" rev-parse HEAD 2>/dev/null || true)"
+        if [[ "$actual" != "$expected" ]]; then
+            echo "ERROR: $module remains at $actual; expected $expected" >&2
+            exit 7
+        fi
+    fi
 done
 
 echo "Installing keyboard definition..."
@@ -89,7 +111,7 @@ mv -f -- "$temporary_uf2" "$published_uf2"
 # QMK intermediate copies must not linger as alternate flash files.
 rm -f -- "$UF2" "$QMK_HOME/.build/${KEYBOARD}_${KEYMAP}.uf2"
 # Retain only the canonical UF2 and single build log; never create an Archiv.
-find "$build_dir" -type f \( -iname '*.uf2' -o -iname '*.log' \) \
-    ! -path "$published_uf2" ! -path "$build_dir/OmniPad-build.log" -delete
+find "$build_dir" -maxdepth 1 -type f \( -iname '*.uf2' -o -iname '*.log' \) \
+    ! -path "$published_uf2" ! -path "$build_dir/OmniPad.log" -delete
 echo
 echo "SUCCESS: $published_uf2"

@@ -164,7 +164,7 @@ With an already configured QMK checkout, after copying `keyboards/icst7789v` int
 qmk compile -kb icst7789v -km default
 ```
 
-**One build → one output:** `build/OmniPad.uf2` and `build/OmniPad-build.log`.
+**One build → one output:** `build/OmniPad.uf2` and `build/OmniPad.log`.
 The log is overwritten on every run; a successful build atomically replaces the UF2.
 On failure, the last working UF2 is retained and the error is in that same log.
 No numbered builds, per-version UF2s, debug BATs or archive folders.

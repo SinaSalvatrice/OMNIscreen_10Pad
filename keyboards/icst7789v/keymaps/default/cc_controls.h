@@ -236,14 +236,6 @@ void keyboard_post_init_user(void) {
     cc_dirty = true;
 }
 
-static bool omp_k0_custom(void) {
-    if (!omp_enabled) return false;
-    const omp_key_t *key = &omp_profile.layers[cc_active].keys[11];
-    uint8_t slots = key->mode == 0 ? 1 : key->mode == 1 ? 5 : 4;
-    for (uint8_t i = 0; i < slots; ++i) if (key->codes[i] > KC_TRNS) return true;
-    return false;
-}
-
 static bool cc_button_update(cc_button_t *button, pin_t pin) {
     const bool raw = gpio_read_pin(pin);
     if (raw != button->sample) {
