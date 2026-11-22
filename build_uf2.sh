@@ -39,6 +39,8 @@ else
     echo "WARNING: python3 unavailable here; using existing generated header"
 fi
 
+python3 "$PROJECT_ROOT/scripts/check_standalone_keymap.py"
+
 cd "$QMK_HOME"
 
 echo "QMK_HOME: $QMK_HOME"
