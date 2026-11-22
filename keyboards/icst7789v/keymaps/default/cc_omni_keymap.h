@@ -295,6 +295,9 @@ static bool cc_user_encoder_turn(bool clockwise) {
         cc_dirty = true;
         return true;
     }
+    // Standalone layer numbers (e.g. 6=RGB) are not the user's OMP
+    // profile layout (e.g. 6=SETTINGS). Never steal its encoder events.
+    if (omp_enabled) return false;
     if (cc_active == CC_RGB_LAYER) {
         cc_rgb_adjust_effect(clockwise);
         return true;
@@ -329,6 +332,7 @@ static bool cc_user_encoder_push(bool pressed) {
         if (!pressed) cc_internal_press(cc_internal_selected);
         return true;
     }
+    if (omp_enabled) return false;
     if (cc_active == CC_NAV_LAYER || cc_active == CC_TEXT_LAYER) {
         if (pressed) {cc_enc_down = true; cc_enc_moved = false;}
         else {
@@ -348,6 +352,10 @@ static bool cc_special_key(uint8_t index, bool pressed) {
         if (pressed) cc_internal_press(index);
         return true;
     }
+    // User profile has priority over the fixed standalone layer mapping.
+    // Otherwise SETTINGS at 6 is incorrectly executed as RGB controls,
+    // and MACROS/TEXT lose their user-configured actions.
+    if (omp_enabled) return false;
     if (cc_active == CC_RGB_LAYER) {
         if (pressed) cc_rgb_key(index);
         return true;
