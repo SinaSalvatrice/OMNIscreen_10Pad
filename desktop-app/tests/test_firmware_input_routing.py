@@ -44,6 +44,20 @@ class HardwareInputRoutingTests(unittest.TestCase):
         self.assertIn("if (!cc_home_view) cc_dirty = true;", controls)
         self.assertGreaterEqual(actions.count("if (!cc_home_view) cc_dirty = true;"), 2)
 
+    def test_saved_profile_has_priority_over_standalone_layer_specials(self):
+        source = (KEYMAP / "cc_omni_keymap.h").read_text(encoding="utf-8")
+        for function, following in (
+            ("static bool cc_special_key(", "if (cc_active == CC_RGB_LAYER)"),
+            ("static bool cc_user_encoder_turn(", "if (cc_active == CC_RGB_LAYER)"),
+            ("static bool cc_user_encoder_push(", "if (cc_active == CC_NAV_LAYER"),
+        ):
+            fragment = source.split(function, 1)[1].split(following, 1)[0]
+            self.assertIn("if (omp_enabled) return false;", fragment)
+        layer_change = source.split("static void cc_user_layer_change(", 1)[1].split(
+            "for (uint8_t i = 0;", 1)[0]
+        self.assertIn("if (!omp_enabled)", layer_change)
+        self.assertIn("cc_rgb_preview_begin()", layer_change)
+
     def test_fallback_k9_ctrl_is_still_2_2(self):
         controls = (KEYMAP / "cc_controls.h").read_text(encoding="utf-8")
         self.assertIn("if (row != 2 || col != 2) return false;", controls)
