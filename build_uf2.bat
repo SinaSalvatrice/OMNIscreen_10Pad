@@ -11,7 +11,9 @@ for /f "tokens=1,*" %%A in ('git -C "%PROJECT_ROOT%" worktree list --porcelain 2
 )
 if not defined CANONICAL_ROOT set "CANONICAL_ROOT=%PROJECT_ROOT%"
 set "ARTIFACT_DIR=%CANONICAL_ROOT%\build"
-set "BUILD_LOG=%ARTIFACT_DIR%\OmniPad-build.log"
+rem Optional isolated test output; normal use still publishes one UF2 under build.
+if defined OMNIPAD_BUILD_OUTPUT set "ARTIFACT_DIR=%OMNIPAD_BUILD_OUTPUT%"
+set "BUILD_LOG=%ARTIFACT_DIR%\OmniPad.log"
 set "BUILD_OUTPUT_DIR=%ARTIFACT_DIR%"
 if not exist "%ARTIFACT_DIR%" mkdir "%ARTIFACT_DIR%"
 if errorlevel 1 (
@@ -19,6 +21,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo [OmniPad] QMK-Build gestartet. Log: "%BUILD_LOG%"
 > "%BUILD_LOG%" echo === OmniPad QMK build ===
 >> "%BUILD_LOG%" echo Source: %PROJECT_ROOT%
 >> "%BUILD_LOG%" echo Output: %ARTIFACT_DIR%
