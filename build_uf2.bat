@@ -15,9 +15,12 @@ rem Optional isolated test output; normal use still publishes one UF2 under buil
 if defined OMNIPAD_BUILD_OUTPUT set "ARTIFACT_DIR=%OMNIPAD_BUILD_OUTPUT%"
 set "BUILD_LOG=%ARTIFACT_DIR%\OmniPad.log"
 set "BUILD_OUTPUT_DIR=%ARTIFACT_DIR%"
+rem Worker mode: run QMK without starting a second log or console session.
+if /I "%~1"=="--worker" goto :run
 if not exist "%ARTIFACT_DIR%" mkdir "%ARTIFACT_DIR%"
 if errorlevel 1 (
     echo ERROR: Unable to create build output directory.
+    call :hold_open
     exit /b 1
 )
 
@@ -26,7 +29,8 @@ echo [OmniPad] QMK-Build gestartet. Log: "%BUILD_LOG%"
 >> "%BUILD_LOG%" echo Source: %PROJECT_ROOT%
 >> "%BUILD_LOG%" echo Output: %ARTIFACT_DIR%
 >> "%BUILD_LOG%" echo Start: %DATE% %TIME%
-call :run >> "%BUILD_LOG%" 2>&1
+rem Show every QMK line live while writing the same lines into OmniPad.log.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\scripts\build_uf2_live.ps1" -Launcher "%~f0" -Log "%BUILD_LOG%"
 set "RESULT=%ERRORLEVEL%"
 >> "%BUILD_LOG%" echo Exit code: %RESULT%
 >> "%BUILD_LOG%" echo Finished: %DATE% %TIME%
@@ -36,13 +40,23 @@ if not "%RESULT%"=="0" (
     echo BUILD FAILED [code %RESULT%].
     echo Full log: "%BUILD_LOG%"
     echo Previously working OmniPad.uf2 is left untouched.
-    powershell -NoProfile -Command "Get-Content -LiteralPath '%BUILD_LOG%' -Tail 25" 2>nul
+    call :hold_open
     exit /b %RESULT%
 )
 echo.
 echo BUILD SUCCESSFUL.
 echo UF2: "%ARTIFACT_DIR%\OmniPad.uf2"
 echo Log: "%BUILD_LOG%"
+call :hold_open
+exit /b 0
+
+:hold_open
+rem Double-click builds stay visible. Set OMNIPAD_NO_PAUSE=1 for automation.
+if not defined OMNIPAD_NO_PAUSE (
+    echo.
+    echo Fertig. Taste druecken, um das Fenster zu schliessen.
+    pause >nul
+)
 exit /b 0
 
 :run

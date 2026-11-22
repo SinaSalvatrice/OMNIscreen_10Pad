@@ -17,13 +17,59 @@ static void cc_clear_eeprom(void) {
 
 // Firmware-owned controls: never trigger a destructive operation without a
 // second, explicit press of the same physical key.
+// Menu navigation takes precedence over normal QMK keys on every non-layer screen.
+static bool cc_on_menu_screen(void) {
+    return cc_internal_mode || cc_screen_selection == CC_SCREEN_LAYERS ||
+           cc_matrix_test_view || cc_menu_view || cc_help_view || cc_color_view;
+}
+static uint8_t cc_internal_count(void) {
+    return cc_internal_mode == 2 ? 5 : cc_internal_mode == 4 ? 3 : 10;
+}
+static void cc_internal_step(int8_t delta) {
+    if (!cc_internal_mode || cc_internal_mode == 3) return;
+    const int8_t count = (int8_t)cc_internal_count();
+    if ((delta == 5 || delta == -5) && count != 10) return;
+    int8_t next = (int8_t)cc_internal_selected + delta;
+    if (delta == 5 || delta == -5) {
+        if (next < 0) next += count;
+        if (next >= count) next -= count;
+    } else {
+        if (next < 0) next = count - 1;
+        if (next >= count) next = 0;
+    }
+    cc_internal_selected = (uint8_t)next;
+    cc_dirty = true;
+}
+static void cc_menu_back(void) {
+    cc_internal_confirm = 255;
+    if (cc_matrix_test_view) cc_matrix_test_exit();
+    else if (cc_internal_mode == 2 || cc_internal_mode == 3 || cc_internal_mode == 4) {
+        cc_internal_mode = 1;
+        cc_internal_selected = 0;
+    } else {
+        cc_internal_mode = 0;
+        cc_open_home();
+    }
+    cc_dirty = true;
+}
+static void cc_switch_source(bool use_app) {
+    if (use_app && !cc_visual_profile_available) return;
+    if (omp_enabled) omp_release_all();
+    clear_keyboard();
+    cc_use_app_profile = use_app;
+    omp_enabled = use_app && cc_visual_profile_available;
+    cc_ui_config_save();
+    cc_activate_layer(omp_enabled ? omp_profile.default_layer : 1);
+    cc_internal_mode = 0;
+    cc_open_home();
+}
 static void cc_internal_press(uint8_t index) {
-    if (!cc_internal_mode || index >= 10) return;
+    if (!cc_internal_mode || index >= cc_internal_count()) return;
     cc_ui_activity();
     if (cc_internal_confirm != 255) {
-        uint8_t pending = cc_internal_confirm;
+        const uint8_t pending = cc_internal_confirm;
         cc_internal_confirm = 255;
-        if (index == 9) { cc_dirty = true; return; }
+        // K9 confirms the highlighted dangerous action, K5 cancels.
         if (index != pending) { cc_dirty = true; return; }
         if (pending == 6) { soft_reset_keyboard(); return; }
         if (pending == 7) { reset_keyboard(); return; }
@@ -32,101 +78,113 @@ static void cc_internal_press(uint8_t index) {
     }
     cc_internal_selected = index;
     if (cc_internal_mode == 3) {
-        if (index == 9) cc_internal_mode = 1;
+        cc_menu_back();
+    } else if (cc_internal_mode == 4) {
+        if (index == 0) cc_switch_source(false);
+        else if (index == 1) cc_switch_source(true);
+        else cc_menu_back();
     } else if (cc_internal_mode == 2) {
         switch (index) {
-            case 0: cc_display_start_index ^= 1u; cc_ui_config_save(); break;
-            case 1: cc_display_timeout_index = (cc_display_timeout_index + 1u) & 3u;
-                    cc_ui_config_save(); break;
-            case 2: // Backlight on/off is a binary control, not PWM brightness.
-                    cc_backlight_awake = !cc_backlight_awake;
-                    gpio_write_pin(LCD_BL, cc_backlight_awake);
-                    break;
-            case 3: cc_internal_mode = 0; cc_screen_selection = CC_SCREEN_LAYERS;
-                    cc_display_mode = true; break;
-            case 4: cc_internal_mode = 0; cc_display_mode = !cc_display_mode; break;
-            case 5: cc_internal_mode = 0; cc_color_view = true; break;
-            case 6: cc_internal_mode = 0; cc_matrix_test_enter(); break;
-            case 7: cc_ui_config_save(); break;
-            case 8: cc_internal_mode = 0; cc_open_home(); break;
-            case 9: cc_internal_mode = 1; break;
+            case 0: cc_internal_mode = 0; cc_open_home(); break;
+            case 1: cc_internal_mode = 0; cc_open_layer_list(); break;
+            case 2: cc_internal_mode = 0; cc_matrix_test_enter(); break;
+            case 3:
+                cc_backlight_awake = !cc_backlight_awake;
+                gpio_write_pin(LCD_BL, cc_backlight_awake);
+                break;
+            case 4: cc_menu_back(); break;
         }
     } else {
         switch (index) {
-            case 0: cc_internal_mode = 0; cc_matrix_test_enter(); break;
-            case 1: cc_internal_mode = 0; cc_matrix_test_enter(); break; // Includes ADC bar.
-            case 2: cc_internal_mode = 3; break;
-            case 3: cc_tap_term_index = (cc_tap_term_index + 1u) & 3u;
-                    cc_ui_config_save(); break;
-            case 4: cc_internal_mode = 2; break;
-            case 5: cc_internal_mode = 0; cc_color_view = true; break; // Color diagnostic.
+            case 0:
+                cc_rgb_master_enabled = !cc_rgb_master_enabled;
+                rgblight_toggle_noeeprom();
+                cc_rgb.frame_enabled = cc_rgb_master_enabled;
+                cc_main_dirty = cc_frame_dirty = true;
+                cc_ui_config_save();
+                break;
+            case 1: {
+                const uint8_t current = rgblight_get_val();
+                const uint8_t next = current >= RGBLIGHT_LIMIT_VAL ? 8 :
+                                     current + 8 > RGBLIGHT_LIMIT_VAL ? RGBLIGHT_LIMIT_VAL : current + 8;
+                rgblight_sethsv_noeeprom(rgblight_get_hue(), rgblight_get_sat(), next);
+                cc_rgb.frame_brightness = next;
+                cc_main_dirty = cc_frame_dirty = true;
+                break;
+            }
+            case 2: cc_internal_mode = 2; cc_internal_selected = 0; break;
+            case 3: cc_internal_mode = 4; cc_internal_selected = cc_use_app_profile ? 1 : 0; break;
+            case 4: cc_internal_mode = 0; cc_matrix_test_enter(); break;
+            case 5: cc_internal_mode = 3; break;
             case 6: case 7: case 8: cc_internal_confirm = index; break;
-            case 9: cc_internal_mode = 0; break;
+            case 9: cc_menu_back(); break;
         }
     }
     cc_dirty = true;
+}
+static bool cc_ui_menu_key(uint8_t index, bool pressed) {
+    if (cc_matrix_test_view) return false; // tester sees raw physical keys
+    if (!cc_internal_mode && cc_screen_selection != CC_SCREEN_LAYERS) return false;
+    if (!pressed) return true;
+    if (index == 4) { cc_menu_back(); return true; }  // K5 back
+    if (cc_internal_mode) {
+        if (index == 8) { // K9 confirms highlighted item
+            cc_internal_press(cc_internal_selected);
+            return true;
+        }
+        if (index == 2) cc_internal_step(-1);       // K3 up
+        else if (index == 6) cc_internal_step(1);   // K7 down
+        else if (index == 5) cc_internal_step(-5);  // K6 left column
+        else if (index == 7) cc_internal_step(5);   // K8 right column
+        return true;
+    }
+    if (index == 8) { cc_activate_layer(cc_preview); cc_open_home(); }
+    else if (index == 2 || index == 5) cc_preview = (cc_preview + omp_layer_count() - 1) % omp_layer_count();
+    else if (index == 6 || index == 7) cc_preview = (cc_preview + 1) % omp_layer_count();
+    cc_dirty = true;
+    return true;
 }
 
 static bool omp_device_action(uint16_t code, bool pressed) {
     if (code < OMP_ACTION_LAYERS || code > OMP_ACTION_SETTINGS) return false;
     if (!pressed || cc_tester_active || code == OMP_ACTION_NONE) return true;
-    if (code == OMP_ACTION_MATRIX) {
-        cc_matrix_test_toggle();
-        return true;
-    }
-    if (code == OMP_ACTION_EEPROM) {
-        cc_eeprom_confirm = true;
-        cc_eeprom_confirm_visible = false;
-        cc_eeprom_confirm_at = timer_read();
-        cc_dirty = true;
-        return true;
-    }
-    cc_matrix_test_exit();
+    // Only four protected screens are supported. Legacy app actions no longer
+    // inject alternate screens over the physical-key navigation.
     switch (code) {
+        case OMP_ACTION_MATRIX:
+            cc_matrix_test_toggle();
+            break;
         case OMP_ACTION_LAYERS:
-        case OMP_ACTION_CUSTOM_SCREEN:
-        case OMP_ACTION_HELP:
-        case OMP_ACTION_COLORS:
-            cc_switch_encoder(true);
-            if (code == OMP_ACTION_LAYERS) {
-                cc_screen_selection = CC_SCREEN_LAYERS;
-                cc_home_view = false;
-            }
-            if (code == OMP_ACTION_CUSTOM_SCREEN) {
-                cc_screen_selection = CC_SCREEN_CUSTOM;
-                cc_home_view = false;
-            }
-            if (code == OMP_ACTION_HELP) cc_help_view = true;
-            if (code == OMP_ACTION_COLORS) cc_color_view = true;
-            break;
-        case OMP_ACTION_HOME:
-            cc_activate_layer(omp_profile.default_layer);
-            cc_switch_encoder(true);
-            cc_screen_selection = CC_SCREEN_AUTO;
-            cc_home_view = true;
-            break;
         case OMP_ACTION_NAVIGATION:
-            cc_switch_encoder(true);
-            cc_screen_selection = CC_SCREEN_NAV;
-            cc_home_view = false;
-            break;
-        case OMP_ACTION_DETAILS:
-            cc_switch_encoder(true);
-            cc_screen_selection = CC_SCREEN_DETAILS;
-            cc_home_view = false;
+            if (omp_enabled) omp_release_all();
+            cc_open_layer_list();
             break;
         case OMP_ACTION_SETTINGS:
-            cc_open_menu();
+        case OMP_ACTION_MENU:
+            if (omp_enabled) omp_release_all();
+            cc_internal_mode = 1;
+            cc_internal_selected = 0;
+            cc_internal_confirm = 255;
+            cc_dirty = true;
             break;
-        case OMP_ACTION_MENU: cc_open_menu(); break;
-        case OMP_ACTION_ENCODER_MODE: cc_switch_encoder(!cc_display_mode); break;
+        case OMP_ACTION_EEPROM:
+            cc_internal_mode = 1;
+            cc_internal_selected = 8; // Confirm in Settings; never erase immediately.
+            cc_dirty = true;
+            break;
+        default:
+            cc_open_home();
+            break;
     }
     omp_screen_invalid = true;
-    cc_dirty = true;
     return true;
 }
 
 static void cc_encoder_press_action(void) {
+    if (cc_internal_mode) {
+        cc_internal_press(cc_internal_selected);
+        return;
+    }
     if (cc_matrix_test_view) {
         ++cc_detect_encoder_pushes;
         if (!cc_tester_active) cc_matrix_test_exit();
@@ -157,7 +215,7 @@ static void cc_encoder_press_action(void) {
         }
         return;
     }
-    if (cc_display_mode) {
+    if (cc_screen_selection == CC_SCREEN_LAYERS) {
         cc_activate_layer(cc_preview);
     } else {
         uint16_t kc = cc_layers[cc_active].encoder_press;
@@ -226,11 +284,20 @@ void keyboard_post_init_user(void) {
     cc_rgb_load(); // 30 matrix LEDs, followed by unchanged 43 Frame LEDs.
 #endif
     omp_load();
-    layer_move(omp_enabled ? omp_profile.default_layer : 1); // Default is layer 1 on every USB boot.
+    cc_visual_profile_available = omp_enabled;
     cc_ui_config_load();
-    cc_display_mode = false; // A working encoder is more useful than a persistent preview.
-    cc_home_view = cc_display_start_index != 0;
-    cc_screen_selection = cc_display_start_index ? CC_SCREEN_AUTO : CC_SCREEN_LAYERS;
+    if (!cc_rgb_master_enabled) {
+        rgblight_disable_noeeprom();
+        cc_rgb.frame_enabled = false;
+        cc_main_dirty = cc_frame_dirty = true;
+    }
+    if (!cc_use_app_profile) omp_enabled = false;
+    cc_active = omp_enabled ? omp_profile.default_layer : 1;
+    cc_preview = cc_active;
+    layer_move(cc_active);
+    cc_display_mode = false;
+    cc_home_view = false; // Active layer map at every startup.
+    cc_screen_selection = CC_SCREEN_DETAILS;
     lcd_init(); // Known-good GPIO bootstrap then QMK HW SPI.
     cc_adxl_init(); // No I2C pin ownership unless enabled after matrix relocation.
     cc_dirty = true;
@@ -268,10 +335,14 @@ static void cc_k0_update(bool changed) {
         cc_k0_held = true;
         cc_k0_tap_count = 0;
         if (omp_enabled) omp_release_all();
-        cc_activate_layer(cc_active == CC_RGB_LAYER
-                          ? (cc_previous == CC_RGB_LAYER ? 1 : cc_previous)
-                          : CC_RGB_LAYER);
-        cc_display_mode = false;
+        if (cc_matrix_test_view) cc_matrix_test_exit();
+        // K0 long-press opens the protected firmware system settings.
+        // Do not change the active typing layer.
+        cc_internal_mode = 1;
+        cc_internal_selected = 0;
+        cc_internal_confirm = 255;
+        cc_internal_skip_k0_release = true;
+        cc_dirty = true;
     }
     if (cc_k0.stable && cc_k0_tap_count &&
         timer_elapsed(cc_k0_released) >= CC_K0_TAPS_MS) {
@@ -279,12 +350,36 @@ static void cc_k0_update(bool changed) {
         cc_k0_tap_count = 0;
         if (taps == 2) cc_open_home();
         else if (cc_matrix_test_view) cc_matrix_test_exit();
-        else cc_switch_encoder(!cc_display_mode);
+        // One tap does not change modes; the active map stays visible.
     }
 }
 
+static uint16_t cc_encoder_pressed_at;
+static bool cc_encoder_pressed_in_layer;
 static void cc_encoder_button_action(void) {
     const bool pressed = !cc_encoder_button.stable;
+    if (pressed) {
+        cc_encoder_pressed_at = timer_read();
+        cc_encoder_pressed_in_layer = !cc_on_menu_screen();
+        // Delay the click until release so a long hold cannot perform an action.
+        if (cc_encoder_pressed_in_layer) return;
+    } else if (cc_encoder_pressed_in_layer) {
+        cc_encoder_pressed_in_layer = false;
+        if (timer_elapsed(cc_encoder_pressed_at) >= 620u) {
+            cc_open_layer_list();
+        } else {
+            cc_encoder_press_action();
+        }
+        return;
+    }
+    if (cc_internal_mode) {
+        if (!pressed) cc_internal_press(cc_internal_selected);
+        return;
+    }
+    if (cc_screen_selection == CC_SCREEN_LAYERS) {
+        if (!pressed) cc_activate_layer(cc_preview);
+        return;
+    }
     if (cc_user_encoder_push(pressed)) return;
     bool custom = false;
     if (omp_enabled && !cc_matrix_test_view && !cc_menu_view) {
@@ -373,9 +468,11 @@ void matrix_scan_user(void) {
     }
     if (cc_internal_mode) {
         if (k0_changed && cc_k0.stable) {
-            cc_internal_confirm = 255;
-            cc_internal_mode = cc_internal_mode == 1 ? 0 : 1;
-            cc_dirty = true;
+            if (cc_internal_skip_k0_release) {
+                cc_internal_skip_k0_release = false;
+            } else {
+                cc_menu_back();
+            }
         }
         if (encoder_changed) cc_user_encoder_push(!cc_encoder_button.stable);
         return;
@@ -397,19 +494,23 @@ static bool cc_encoder_rotate(bool clockwise) {
         else ++cc_detect_counterclockwise;
         return false; // Never emit encoder host actions during diagnosis.
     }
-    if (omp_enabled) {
+    // Menus own the encoder exclusively, even with an app profile loaded.
+    if (!cc_internal_mode && cc_screen_selection != CC_SCREEN_LAYERS &&
+        !cc_menu_view && omp_enabled) {
         omp_encoder_direction = clockwise ? 1 : -1;
         omp_encoder_position = (omp_encoder_position + (clockwise ? 1 : 42)) % 43;
         omp_event(2);
     }
-    if (cc_menu_view) {
+    if (cc_internal_mode) {
+        cc_internal_step(clockwise ? 1 : -1);
+    } else if (cc_menu_view) {
         cc_menu_selection = (cc_menu_selection + (clockwise ? 1 : 5)) % 6;
         cc_dirty = true;
-    } else if (cc_display_mode) {
+    } else if (cc_screen_selection == CC_SCREEN_LAYERS) {
         if (cc_help_view || cc_color_view) return false;
         cc_preview = (cc_preview + (clockwise ? 1 : omp_layer_count() - 1)) %
                      omp_layer_count();
-        cc_home_view = cc_preview == 0;
+        cc_home_view = false;
         cc_dirty = true;
     } else if (cc_user_encoder_turn(clockwise)) {
         return false;
@@ -417,7 +518,10 @@ static bool cc_encoder_rotate(bool clockwise) {
         omp_tap(omp_profile.layers[cc_active].encoders[clockwise ? 1 : 0]);
         return false;
     } else {
-        return true; // QMK encoder map: VIA remaps CCW/CW independently per layer.
+        // Factory encoder never executes stale VIA-EEPROM mappings.
+        uint16_t code = clockwise ? cc_layers[cc_active].encoder_cw : cc_layers[cc_active].encoder_ccw;
+        if (code != KC_NO && code != KC_TRNS) tap_code16(code);
+        return false;
     }
     return false;
 }
@@ -441,9 +545,8 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
         }
         for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
             if (cc_matrix_row[i] != row || cc_matrix_col[i] != col) continue;
-            cc_last_key = i;
-            // A Home-screen press must not force a costly full TFT redraw.
-            // On the layer view, key highlights remain responsive.
+            if (cc_ui_menu_key(i, record->event.pressed)) return false;
+            cc_last_key = record->event.pressed ? i : 255;
             if (!cc_home_view) cc_dirty = true;
             if (cc_special_key(i, record->event.pressed)) return false;
             // Fixed K5/K9/K10 have priority over profile and fallback
@@ -457,6 +560,15 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
                 return false;
             }
             if (cc_td_event(i, record->event.pressed)) return false;
+            // All other keys also use the factory map, never stale VIA EEPROM.
+            if (!omp_enabled) {
+                const uint16_t factory_code = cc_layers[cc_active].taps[i];
+                if (factory_code != KC_NO && factory_code != KC_TRNS) {
+                    if (record->event.pressed) register_code16(factory_code);
+                    else unregister_code16(factory_code);
+                }
+                return false;
+            }
             break;
         }
         return true;
@@ -543,9 +655,17 @@ void housekeeping_task_user(void) {
         rgblight_sethsv_noeeprom(rgblight_get_hue(), rgblight_get_sat(), rgblight_get_val());
         cc_main_dirty = cc_frame_dirty = true;
     }
-    if (!cc_tester_preview_leds()) {
-        if (omp_preview_active || omp_enabled) omp_lighting_tick(omp_preview_active);
-        else cc_rgb_tick();
+    static bool cc_master_was_on = true;
+    if (!cc_rgb_master_enabled) {
+        if (cc_master_was_on) rgblight_driver.set_color_all(0, 0, 0);
+        cc_master_was_on = false;
+    } else {
+        if (!cc_master_was_on) cc_main_dirty = cc_frame_dirty = true;
+        cc_master_was_on = true;
+        if (!cc_tester_preview_leds()) {
+            if (omp_preview_active || omp_enabled) omp_lighting_tick(omp_preview_active);
+            else cc_rgb_tick();
+        }
     }
     preview_was_active = omp_preview_active;
 #endif

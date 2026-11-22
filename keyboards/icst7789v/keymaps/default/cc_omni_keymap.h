@@ -28,14 +28,14 @@ static bool cc_rgb_preview_active;
 static cc_rgb_settings_t cc_rgb_before;
 static uint8_t cc_rgb_mode_before, cc_rgb_hue_before, cc_rgb_sat_before, cc_rgb_val_before;
 static uint8_t cc_rgb_zone;
-static uint8_t cc_tap_term_index = 1; // 180/220/260/320 ms
+static uint8_t cc_tap_term_index = 1; // 150/180/220/260 ms
 static uint8_t cc_display_timeout_index; // 0/30/60/300 seconds
-static uint8_t cc_display_start_index; // layers/home
+static uint8_t cc_display_start_index = 1; // default view is active layer map
 static uint32_t cc_activity_at;
 static bool cc_backlight_awake = true;
 
 static uint16_t cc_tap_term(void) {
-    static const uint16_t terms[4] = {180, 220, 260, 320};
+    static const uint16_t terms[4] = {150, 180, 220, 260};
     return terms[cc_tap_term_index & 3];
 }
 static void cc_mouse_left_click(void) {
@@ -51,16 +51,23 @@ static void cc_ui_activity(void) {
 }
 static void cc_ui_config_load(void) {
     uint32_t value = eeconfig_read_kb();
-    if ((value >> 24) == 0xC7u) {
+    if ((value >> 24) == 0xC9u || (value >> 24) == 0xC8u || (value >> 24) == 0xC7u) {
         cc_tap_term_index = (value >> 16) & 3u;
         cc_display_timeout_index = (value >> 8) & 3u;
-        cc_display_start_index = value & 1u;
+        // Migrate the old default layer-index screen to a usable home view.
+        cc_display_start_index = 1; // migrate all legacy boots to active map
+        if ((value >> 24) == 0xC9u) {
+            cc_use_app_profile = (value & 4u) != 0;
+            cc_rgb_master_enabled = (value & 8u) == 0;
+        }
     }
     cc_ui_activity();
 }
 static void cc_ui_config_save(void) {
-    eeconfig_update_kb((0xC7u << 24) | ((uint32_t)cc_tap_term_index << 16) |
-                       ((uint32_t)cc_display_timeout_index << 8) | cc_display_start_index);
+    eeconfig_update_kb((0xC9u << 24) | ((uint32_t)cc_tap_term_index << 16) |
+                       ((uint32_t)cc_display_timeout_index << 8) |
+                       ((uint32_t)!cc_rgb_master_enabled << 3) |
+                       ((uint32_t)cc_use_app_profile << 2) | 1u);
 }
 static void cc_ui_timeout_tick(void) {
     static const uint32_t seconds[4] = {0, 30, 60, 300};
@@ -239,11 +246,10 @@ static bool cc_td_event(uint8_t index, bool pressed) {
             s->pending = false;
         }
         s->origin = cc_active;
+        // Factory actions are defined in generated_layers.h, not potentially
+        // stale VIA EEPROM entries. Never mix old VIA and standalone mappings.
         s->code = omp_enabled ? omp_profile.layers[cc_active].keys[index].codes[0] :
-                  dynamic_keymap_get_keycode(cc_active, cc_matrix_row[index], cc_matrix_col[index]);
-        // Older VIA EEPROM layouts may contain an uninitialized eighth layer.
-        if (s->code == KC_NO && cc_active < CC_LAYER_COUNT)
-            s->code = cc_layers[cc_active].taps[index];
+                  cc_layers[cc_active].taps[index];
         s->started = timer_read();
         s->down = true; s->held = s->second = false;
     } else if (s->down) {

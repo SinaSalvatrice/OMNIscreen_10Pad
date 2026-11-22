@@ -98,7 +98,9 @@ static bool omp_command(uint8_t *data, uint8_t length) {
             if (omp_store()) {
                 cc_screen_selection = CC_SCREEN_AUTO;
                 omp_screen_invalid = true;
-                cc_activate_layer(omp_profile.default_layer);
+                cc_visual_profile_available = true;
+                if (!cc_use_app_profile) omp_enabled = false;
+                cc_activate_layer(omp_enabled ? omp_profile.default_layer : 1);
                 omp_layer_changed();
                 cc_dirty = true;
                 return true;

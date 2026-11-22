@@ -77,9 +77,26 @@ do
     fi
 done
 
-echo "Installing keyboard definition..."
-rm -rf "keyboards/$KEYBOARD"
-cp -R "$PROJECT_ROOT/keyboards/$KEYBOARD" "keyboards/$KEYBOARD"
+echo "Synchronizing keyboard definition (changed files only)..."
+source_keyboard="$PROJECT_ROOT/keyboards/$KEYBOARD"
+target_keyboard="keyboards/$KEYBOARD"
+mkdir -p "$target_keyboard"
+# Remove deleted sources, without invalidating unrelated object files.
+while IFS= read -r -d '' oldfile; do
+    relative="${oldfile#"$target_keyboard/"}"
+    if [[ ! -f "$source_keyboard/$relative" ]]; then
+        rm -f -- "$oldfile"
+    fi
+done < <(find "$target_keyboard" -type f -print0)
+# Preserve mtime for identical sources, making incremental QMK builds possible.
+while IFS= read -r -d '' srcfile; do
+    relative="${srcfile#"$source_keyboard/"}"
+    dest="$target_keyboard/$relative"
+    if ! cmp -s -- "$srcfile" "$dest"; then
+        mkdir -p -- "$(dirname "$dest")"
+        cp -- "$srcfile" "$dest"
+    fi
+done < <(find "$source_keyboard" -type f -print0)
 
 # keyboard.json is the sole matrix definition, using direct RP2040 GPIOs.
 echo "Keyboard JSON: direct GPIO matrix, no I2C expansion"

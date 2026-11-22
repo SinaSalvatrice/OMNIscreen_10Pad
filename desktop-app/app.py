@@ -130,7 +130,7 @@ class Editor:
         self.notebook.add(self.light_page, text="Beleuchtung")
         self.notebook.add(self.snippet_page, text="Snippet-Bibliothek")
         self.screen_page = ScreenEditor(self.notebook, self)
-        self.notebook.add(self.screen_page, text="Display-Studio")
+        self.notebook.add(self.screen_page, text="Display-Vorlagen")
         self.notebook.add(self.detect_page, text="Erkennung")
         self.tester_page = Tester(self.notebook, self)
         self.notebook.add(self.tester_page, text="Tester")
@@ -887,11 +887,8 @@ class Editor:
         self.screen_page.add(1, binding=2, key=self.target[1])
 
     def display_trigger(self):
-        self.notebook.select(self.screen_page)
-        panel = self.screen_page.assignments
-        self.screen_page.pages.select(panel)
-        key = self.current_layer["keys"][self.target[1]]
-        panel.set_selection(self.layer, self.target[1], key["mode"], self.action_slot)
+        # Display layout editing was removed. Key gestures remain in Layer-Zugänge.
+        self.layer_trigger()
 
     def layer_trigger(self):
         self.notebook.select(self.layer_entries)

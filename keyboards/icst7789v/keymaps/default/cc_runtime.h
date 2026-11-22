@@ -26,6 +26,10 @@ static bool cc_menu_view = false;
 static uint8_t cc_internal_mode = 0; // 0 normal, 1 system, 2 display, 3 info
 static uint8_t cc_internal_selected = 0;
 static uint8_t cc_internal_confirm = 255;
+static bool cc_internal_skip_k0_release = false;
+static bool cc_use_app_profile = false; // persisted config source
+static bool cc_visual_profile_available = false; // templates work in firmware mode
+static bool cc_rgb_master_enabled = true; // persisted RGB power
 static void cc_internal_press(uint8_t index);
 static void cc_user_layer_change(uint8_t from, uint8_t to);
 static bool cc_help_view = false;
@@ -125,7 +129,9 @@ static void cc_activate_layer(uint8_t layer_index) {
     }
     cc_active = layer_index;
     cc_preview = layer_index;
-    cc_home_view = layer_index == 0;
+    cc_home_view = false; // The active layer map IS the home view.
+    cc_display_mode = false;
+    cc_screen_selection = CC_SCREEN_DETAILS;
     cc_menu_view = false;
     cc_help_view = false;
     cc_color_view = false;
@@ -136,29 +142,23 @@ static void cc_activate_layer(uint8_t layer_index) {
 }
 
 static void cc_open_home(void) {
-    // Home is an actual screen; use the user's configured default layer.
-    uint8_t start_layer = omp_enabled ? omp_profile.default_layer : 1u;
-    cc_activate_layer(start_layer);
-    cc_display_mode = true;
-    cc_screen_selection = CC_SCREEN_AUTO;
-    cc_home_view = true;
-    cc_preview = start_layer;
-    cc_menu_view = false;
-    cc_help_view = false;
-    cc_color_view = false;
-    cc_matrix_test_view = false;
+    // The only home view is the active layer map, never a separate landing page.
+    cc_home_view = false;
+    cc_display_mode = false;
+    cc_screen_selection = CC_SCREEN_DETAILS;
+    cc_preview = cc_active;
+    cc_menu_view = cc_help_view = cc_color_view = false;
     cc_dirty = true;
 }
 
-static void cc_open_menu(void) {
+static void cc_open_layer_list(void) {
     cc_display_mode = true;
-    cc_menu_view = true;
-    cc_help_view = false;
-    cc_color_view = false;
-    cc_matrix_test_view = false;
-    cc_menu_selection = 0;
+    cc_screen_selection = CC_SCREEN_LAYERS;
+    cc_preview = cc_active;
+    cc_home_view = cc_menu_view = cc_help_view = cc_color_view = false;
     cc_dirty = true;
 }
+
 
 static void cc_switch_encoder(bool display_mode) {
     cc_display_mode = display_mode;
@@ -177,7 +177,7 @@ static void cc_switch_encoder(bool display_mode) {
  // 0 HOME, 1 INDEX, 2 DETAILS, 3 SETTINGS, 4 NAVIGATION, 5 TESTER.
 static uint8_t cc_view_kind(void) {
     if (cc_matrix_test_view) return 5;
-    if (cc_menu_view) return 3;
+    if (cc_internal_mode || cc_menu_view) return 3;
     if (cc_home_view) return 0;
     if (cc_screen_selection == CC_SCREEN_LAYERS) return 1;
     if (cc_screen_selection == CC_SCREEN_NAV) return 4;
@@ -185,13 +185,13 @@ static uint8_t cc_view_kind(void) {
 }
 
 static uint16_t cc_view_bg(void) {
-    return omp_enabled ? omp_profile.themes[cc_view_kind()].background : C_BLACK;
+    return cc_visual_profile_available ? omp_profile.themes[cc_view_kind()].background : C_BLACK;
 }
 static uint16_t cc_view_accent(void) {
-    return omp_enabled ? omp_profile.themes[cc_view_kind()].accent : C_CYAN;
+    return cc_visual_profile_available ? omp_profile.themes[cc_view_kind()].accent : C_CYAN;
 }
 static uint8_t cc_view_preset(void) {
-    return omp_enabled ? omp_profile.themes[cc_view_kind()].preset : 0;
+    return cc_visual_profile_available ? omp_profile.themes[cc_view_kind()].preset : 0;
 }
 static void cc_background(void) {
     uint16_t bg = cc_view_bg();
@@ -207,9 +207,11 @@ static void cc_background(void) {
         lcd_fill((LCD_W / 3u) * 2u, 2, LCD_W - (LCD_W / 3u) * 2u, 3, C_YELLOW);
     }
     cc_draw_text(7, 9, "CC / OMNIPAD", 1, C_WHITE);
-    cc_draw_text(265, 9, cc_display_mode ? "DISP" : "ENC", 1,
-                 cc_display_mode ? cc_view_accent() : C_YELLOW);
-    cc_draw_text(7, 225, "K0 1X MODE 2X DEFAULT HOLD MENU", 1, cc_view_accent());
+    const char *view_label = cc_matrix_test_view ? "TEST" :
+                             cc_internal_mode ? "MENU" :
+                             cc_screen_selection == CC_SCREEN_LAYERS ? "LIST" : "MAP";
+    cc_draw_text(270, 9, view_label, 1, cc_view_accent());
+    cc_draw_text(7, 225, "ENC HOLD: LIST  K0 HOLD: MENU  K0 3X: TEST", 1, cc_view_accent());
 }
 
 static void cc_layer_key_tile(uint8_t i, uint8_t selected, const cc_layer_desc_t *desc, uint16_t accent) {
@@ -221,9 +223,7 @@ static void cc_layer_key_tile(uint8_t i, uint8_t selected, const cc_layer_desc_t
     const uint16_t w = shape->w;
     const uint16_t h = shape->h;
     // The screen must not pretend that a VIA-edited key still has its preset.
-    const bool fixed_modifier = !omp_enabled && (i == 4 || i == 8 || i == 9);
-    const uint16_t mapped = dynamic_keymap_get_keycode(selected, cc_matrix_row[i], cc_matrix_col[i]);
-    const char *label = (!fixed_modifier && mapped != desc->taps[i]) ? "VIA" : desc->labels[i];
+    const char *label = desc->labels[i];
     if (omp_enabled) label = omp_profile.layers[selected].keys[i].label;
     const bool highlight = cc_last_key == i;
     lcd_fill(x, y, w, h, highlight ? 0x3A90 : 0x29E8);
@@ -247,32 +247,35 @@ static bool cc_layer_screen_invalid = true;
 
 // Renderers for distinct protected system screens. The settings/tester
 // controls themselves remain firmware-owned; themes never change their actions.
-static void cc_home_screen(void) {
-    cc_background();
-    const uint8_t active = cc_active < omp_layer_count() ? cc_active : 0;
-    const char *name = omp_enabled ? omp_profile.layers[active].name : cc_layers[active].name;
-    const uint16_t accent = cc_view_accent();
-    lcd_fill(12, 43, 296, 133, cc_view_preset() == 1 ? 0x0000 : 0x2186);
-    lcd_fill(12, 43, 296, 5, accent);
-    cc_draw_text(27, 67, "OMNIPAD", 3, accent);
-    cc_draw_text(27, 112, "ACTIVE", 1, C_WHITE);
-    cc_draw_text(27, 134, name, 2, C_WHITE);
-    cc_draw_text(18, 190, "ENC TURN: LAYERS", 1, C_WHITE);
-    cc_draw_text(18, 203, "K0 HOLD: SETTINGS", 1, accent);
-}
 
+static bool cc_layer_list_invalid = true;
+static uint8_t cc_layer_list_last_selection = 255;
+static uint8_t cc_layer_list_last_active = 255;
+static void cc_layer_index_row(uint8_t i, uint16_t accent) {
+    if (i >= omp_layer_count() || i >= OMP_LAYERS) return;
+    const uint16_t x = 10 + (i / 6u) * 152u;
+    const uint16_t y = 70 + (i % 6u) * 23u;
+    const uint16_t color = i == cc_preview ? accent : 0x3206;
+    lcd_fill(x, y, 146, 21, color);
+    if (i == cc_active) lcd_fill(x, y, 4, 21, C_GREEN);
+    const char *name = omp_enabled ? omp_profile.layers[i].name : cc_layers[i].name;
+    cc_draw_text(x + 6, y + 7, name, 1, C_WHITE);
+}
 static void cc_layer_index_screen(void) {
-    cc_background();
     const uint16_t accent = cc_view_accent();
-    cc_draw_text(10, 36, "LAYER INDEX", 2, accent);
-    for (uint8_t i = 0; i < omp_layer_count() && i < OMP_LAYERS; ++i) {
-        uint16_t x = 10 + (i / 6u) * 152u;
-        uint16_t y = 70 + (i % 6u) * 23u;
-        uint16_t color = i == cc_preview ? accent : 0x3206;
-        lcd_fill(x, y, 146, 21, color);
-        const char *name = omp_enabled ? omp_profile.layers[i].name : cc_layers[i].name;
-        cc_draw_text(x + 6, y + 7, name, 1, C_WHITE);
+    if (cc_layer_list_invalid || cc_active != cc_layer_list_last_active) {
+        cc_background();
+        cc_draw_text(10, 36, "LAYER LIST", 2, accent);
+        for (uint8_t i = 0; i < omp_layer_count() && i < OMP_LAYERS; ++i)
+            cc_layer_index_row(i, accent);
+        cc_draw_text(8, 225, "K3 UP K7 DOWN K9 OPEN K5 BACK", 1, C_WHITE);
+        cc_layer_list_invalid = false;
+    } else if (cc_preview != cc_layer_list_last_selection) {
+        cc_layer_index_row(cc_layer_list_last_selection, accent);
+        cc_layer_index_row(cc_preview, accent);
     }
+    cc_layer_list_last_selection = cc_preview;
+    cc_layer_list_last_active = cc_active;
 }
 
 static void cc_navigation_screen(void) {
@@ -293,8 +296,8 @@ static void cc_layer_screen(void) {
     static uint32_t drawn_generation;
     const uint8_t selected = cc_preview;
     const cc_layer_desc_t *desc = &cc_layers[selected < CC_LAYER_COUNT ? selected : 0];
-    const uint16_t accent = omp_enabled ? cc_view_accent() : desc->accent_rgb565;
-    if (!omp_enabled || cc_layer_screen_invalid || selected != drawn_layer || cc_active != drawn_active ||
+    const uint16_t accent = cc_visual_profile_available ? cc_view_accent() : desc->accent_rgb565;
+    if (cc_layer_screen_invalid || selected != drawn_layer || cc_active != drawn_active ||
         cc_display_mode != drawn_display_mode || omp_generation != drawn_generation) {
         cc_background();
         lcd_fill(7, 33, 109, 171, 0x2186);
@@ -535,42 +538,80 @@ static void cc_menu_screen(void) {
     }
 }
 
+static uint8_t cc_internal_drawn_mode = 0;
+static uint8_t cc_internal_drawn_selected = 255;
+static uint8_t cc_internal_drawn_confirm = 255;
+static uint8_t cc_internal_drawn_brightness = 255;
+static uint8_t cc_internal_drawn_power = 255;
+static uint8_t cc_internal_drawn_source = 255;
+static void cc_internal_item(uint8_t i, const char *name, bool selected) {
+    const uint16_t x = i < 5 ? 12 : 163;
+    const uint16_t y = 65 + (i % 5u) * 28u;
+    lcd_fill(x, y, 143, 24, selected ? 0x2C96 : 0x2145);
+    cc_draw_text(x + 6, y + 8, name, 1, C_WHITE);
+}
 static void cc_internal_screen(void) {
     static const char *sys[10] = {
-        "MATRIX", "SLIDER", "DEVICE INFO", "TD SPEED", "DISPLAY",
-        "COLOR TEST", "RESTART", "BOOTLOADER", "CLEAR EEPROM", "BACK"
+        "RGB POWER", "RGB BRIGHT", "DISPLAY", "CONFIG SOURCE", "MATRIX",
+        "DEVICE INFO", "RESTART", "BOOTLOADER", "CLEAR EEPROM", "BACK"
     };
-    static const char *disp[10] = {
-        "START VIEW", "TIMEOUT", "BACKLIGHT", "LAYER INDEX", "ENC MODE",
-        "COLOR TEST", "MATRIX", "SAVE", "HOME VIEW", "BACK"
+    static const char *disp[5] = {
+        "ACTIVE MAP", "LAYER LIST", "MATRIX", "BACKLIGHT", "BACK"
     };
-    const char **items = cc_internal_mode == 2 ? disp : sys;
-    cc_background();
-    cc_draw_text(11, 37, cc_internal_mode == 2 ? "DISPLAY SETTINGS" :
-                         cc_internal_mode == 3 ? "DEVICE INFORMATION" : "SYSTEM SETTINGS", 2, C_CYAN);
-    if (cc_internal_mode == 3) {
-        cc_draw_text(13, 85, "RP2040 / OMNIPAD", 1, C_WHITE);
-        cc_draw_text(13, 106, "QMK / VIA HID / USB", 1, C_WHITE);
-        cc_draw_text(13, 127, "FIRMWARE V7", 1, C_WHITE);
-        cc_draw_text(13, 180, "K10 / K0: BACK", 1, C_YELLOW);
-        return;
+    static const char *config[3] = {"FIRMWARE", "APP PROFILE", "BACK"};
+    const char **items = cc_internal_mode == 2 ? disp : cc_internal_mode == 4 ? config : sys;
+    const uint8_t count = cc_internal_mode == 2 ? 5 : cc_internal_mode == 4 ? 3 : 10;
+    const uint8_t brightness = rgblight_get_val();
+    const uint8_t power = cc_rgb_master_enabled ? 1 : 0;
+    const uint8_t source = cc_use_app_profile ? 1 : 0;
+    const bool full = cc_internal_drawn_mode != cc_internal_mode ||
+                      cc_internal_drawn_confirm != cc_internal_confirm ||
+                      cc_internal_drawn_power != power ||
+                      cc_internal_drawn_source != source ||
+                      (cc_internal_mode == 1 && cc_internal_drawn_brightness != brightness);
+    if (full) {
+        cc_background();
+        cc_draw_text(11, 37, cc_internal_mode == 2 ? "DISPLAY" :
+                     cc_internal_mode == 4 ? "CONFIGURATION" :
+                     cc_internal_mode == 3 ? "DEVICE INFO" : "SETTINGS", 2, C_CYAN);
+        if (cc_internal_mode == 3) {
+            cc_draw_text(13, 85, "RP2040 / OMNIPAD", 1, C_WHITE);
+            cc_draw_text(13, 106, "QMK / VIA HID / USB", 1, C_WHITE);
+            cc_draw_text(13, 127, "FIRMWARE UI REV 2", 1, C_WHITE);
+            cc_draw_text(13, 152, cc_use_app_profile ? "MODE APP" : "MODE FIRMWARE", 1, C_CYAN);
+        } else {
+            for (uint8_t i = 0; i < count; ++i) cc_internal_item(i, items[i], i == cc_internal_selected);
+            if (cc_internal_mode == 1) {
+                char info[24];
+                (void)snprintf(info, sizeof(info), "RGB %s  BRIGHT %u/64",
+                               power ? "ON" : "OFF", (unsigned)brightness);
+                cc_draw_text(9, 205, info, 1, C_YELLOW);
+            } else if (cc_internal_mode == 4) {
+                cc_draw_text(11, 173, source ? "ACTIVE APP" : "ACTIVE FIRMWARE", 1, C_YELLOW);
+                if (!cc_visual_profile_available) cc_draw_text(11, 189, "NO APP PROFILE SAVED", 1, C_RED);
+            }
+        }
+        if (cc_internal_confirm != 255) {
+            lcd_fill(5, 58, 310, 150, C_BLACK);
+            cc_draw_text(12, 93, "CONFIRM FIRMWARE ACTION?", 1, C_YELLOW);
+            cc_draw_text(12, 120, "K9 AGAIN TO CONFIRM", 1, C_WHITE);
+            cc_draw_text(12, 144, "K5 BACK TO CANCEL", 1, C_CYAN);
+        }
+        cc_draw_text(8, 225, "K3 UP K7 DOWN K6 LEFT K8 RIGHT K9 OK K5 BACK", 1, C_CYAN);
+    } else if (cc_internal_drawn_selected != cc_internal_selected && cc_internal_mode != 3) {
+        if (cc_internal_drawn_selected < count) {
+            cc_internal_item(cc_internal_drawn_selected, items[cc_internal_drawn_selected], false);
+        }
+        if (cc_internal_confirm == 255) {
+            cc_internal_item(cc_internal_selected, items[cc_internal_selected], true);
+        }
     }
-    for (uint8_t i = 0; i < 10; ++i) {
-        uint16_t x = i < 5 ? 12 : 163;
-        uint16_t y = 65 + (i % 5) * 28;
-        lcd_fill(x, y, 143, 24, cc_internal_selected == i ? 0x2C96 : 0x2145);
-        char key[8];
-        (void)snprintf(key, sizeof(key), "K%d", (int)(i+1));
-        cc_draw_text(x + 5, y + 8, key, 1, C_YELLOW);
-        cc_draw_text(x + 31, y + 8, items[i], 1, C_WHITE);
-    }
-    if (cc_internal_confirm != 255) {
-        lcd_fill(5, 58, 310, 150, 0x0000);
-        cc_draw_text(12, 93, "CONFIRM DANGEROUS ACTION?", 1, C_YELLOW);
-        cc_draw_text(12, 120, "PRESS SAME KEY AGAIN", 1, C_WHITE);
-        cc_draw_text(12, 144, "K10 / K0: CANCEL", 1, C_CYAN);
-    }
-    cc_draw_text(9, 225, "TURN SELECT / PUSH ENTER / K0 BACK", 1, C_CYAN);
+    cc_internal_drawn_mode = cc_internal_mode;
+    cc_internal_drawn_selected = cc_internal_selected;
+    cc_internal_drawn_confirm = cc_internal_confirm;
+    cc_internal_drawn_brightness = brightness;
+    cc_internal_drawn_power = power;
+    cc_internal_drawn_source = source;
 }
 
 static void cc_help_screen(void) {
@@ -612,6 +653,9 @@ static bool cc_custom_screen_selected(void) {
 
 static void cc_redraw(void) {
     if (!panel_ready) return;
+    if (cc_screen_selection != CC_SCREEN_LAYERS || cc_internal_mode || cc_matrix_test_view)
+        cc_layer_list_invalid = true;
+    if (!cc_internal_mode) cc_internal_drawn_mode = 0;
     if (cc_internal_mode || cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view || cc_eeprom_confirm ||
         cc_reset_state == CC_RESET_HOLDING || cc_custom_screen_selected()) cc_layer_screen_invalid = true;
     if (cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view) omp_screen_invalid = true;
@@ -636,7 +680,7 @@ static void cc_redraw(void) {
     else if (cc_help_view) cc_help_screen();
     else if (cc_menu_view) cc_menu_screen();
     else if (cc_custom_screen_selected()) omp_screen_render();
-    else if (cc_home_view) cc_home_screen();
+    else if (cc_home_view) cc_layer_screen();
     else if (cc_screen_selection == CC_SCREEN_LAYERS) cc_layer_index_screen();
     else if (cc_screen_selection == CC_SCREEN_NAV) cc_navigation_screen();
     else cc_layer_screen();

@@ -34,7 +34,7 @@ SLIDER_MODES = ["Aus", "Tasten pro Schritt", "Main-Helligkeit", "Frame-Helligkei
 BINDINGS = ["Text", "Layername", "Tastenbeschriftung", "Reglerwert", "Letzte Taste",
             "Encoder-Modus", "Erkannte Anschläge", "Sensor X", "Sensor Y", "Sensor Z"]
 ICONS = ["Zahnrad", "Musik", "Pfeile", "Herz", "Blitz", "Speichern", "Sonne", "Werkzeug"]
-MATRIX = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3), (2, 2), (2, 3)]
+MATRIX = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3), (2, 1), (2, 3)]  # K9 physical R2/C1
 ROOT = Path(__file__).resolve().parent.parent
 USER_DATA = ROOT / "desktop-app" / "user-data"
 
