@@ -103,9 +103,13 @@ static void cc_rgb_preview_commit(void) {
     cc_dirty = true;
 }
 static void cc_user_layer_change(uint8_t from, uint8_t to) {
-    if (from == CC_RGB_LAYER && to != CC_RGB_LAYER) cc_rgb_preview_cancel();
-    if (from != CC_RGB_LAYER && to == CC_RGB_LAYER) cc_rgb_preview_begin();
-    if (from == CC_MACRO_LAYER && to != CC_MACRO_LAYER) cc_macro_recording = false;
+    // Standalone layer 6 is RGB, but the same numeric layer in a saved
+    // OmniPad profile may be SETTINGS. Never enter RGB preview implicitly.
+    if (!omp_enabled) {
+        if (from == CC_RGB_LAYER && to != CC_RGB_LAYER) cc_rgb_preview_cancel();
+        if (from != CC_RGB_LAYER && to == CC_RGB_LAYER) cc_rgb_preview_begin();
+        if (from == CC_MACRO_LAYER && to != CC_MACRO_LAYER) cc_macro_recording = false;
+    }
     if (cc_nav_alt_down) {
         unregister_code(KC_LALT);
         cc_nav_alt_down = false;
