@@ -188,7 +188,7 @@ static bool cc_handle_fixed_modifier(uint8_t row, uint8_t col, bool pressed) {
         if (pressed) register_code(KC_LALT); else unregister_code(KC_LALT);
         return true;
     }
-    if (row != 2 || col != 2) return false;
+    if (row != 2 || col != 1) return false;
     if (cc_active == CC_TEXT_LAYER) {
         if (pressed) register_code(KC_SPC); else unregister_code(KC_SPC);
         return true;
@@ -311,7 +311,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         cc_matrix_test_record(row, col, record->event.pressed);
         return false;
     }
-    if (cc_k9_down && record->event.pressed && !(row == 2 && col == 2)) {
+    if (cc_k9_down && record->event.pressed && !(row == 2 && col == 1)) {
         cc_k9_chord = true;
     }
     if (cc_handle_fixed_modifier(row, col, record->event.pressed)) return false;
@@ -429,7 +429,7 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
     if (IS_KEYEVENT(record->event)) {
         const uint8_t row = record->event.key.row, col = record->event.key.col;
         if (record->event.pressed) cc_ui_activity();
-        if (cc_k9_down && record->event.pressed && !(row == 2 && col == 2))
+        if (cc_k9_down && record->event.pressed && !(row == 2 && col == 1))
             cc_k9_chord = true;
         if (cc_nav_alt_down && record->event.pressed) {
             unregister_code(KC_LALT);
@@ -442,14 +442,21 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
         for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
             if (cc_matrix_row[i] != row || cc_matrix_col[i] != col) continue;
             cc_last_key = i;
-            cc_dirty = true;
+            // A Home-screen press must not force a costly full TFT redraw.
+            // On the layer view, key highlights remain responsive.
+            if (!cc_home_view) cc_dirty = true;
             if (cc_special_key(i, record->event.pressed)) return false;
-            if (cc_td_event(i, record->event.pressed)) return false;
+            // Fixed K5/K9/K10 have priority over profile and fallback
+            // gestures. K9 is physically wired at row 2, column 1.
             if (cc_handle_fixed_modifier(row, col, record->event.pressed)) return false;
             if (omp_enabled) {
+                // Exactly one gesture engine can own an event. The former
+                // ordering sent K1-K8 through cc_td_event and silently
+                // bypassed saved OmniPad Tap Dance / multi-slot actions.
                 omp_key_event(i, record->event.pressed);
                 return false;
             }
+            if (cc_td_event(i, record->event.pressed)) return false;
             break;
         }
         return true;
