@@ -1,6 +1,7 @@
 // Standalone hardware-first keymap; the OmniPad app remains optional.
 // Included from cc_controls.h after cc_runtime.h and the RGB/OMP modules.
 #pragma once
+#include "mousekey.h"
 // Seven built-in slots per bank work without a configured VIA/OMP profile.
 
 #define CC_MEDIA_LAYER 7
@@ -36,6 +37,10 @@ static bool cc_backlight_awake = true;
 static uint16_t cc_tap_term(void) {
     static const uint16_t terms[4] = {180, 220, 260, 320};
     return terms[cc_tap_term_index & 3];
+}
+static void cc_mouse_left_click(void) {
+    mousekey_on(MS_BTN1); mousekey_send();
+    mousekey_off(MS_BTN1); mousekey_send();
 }
 static void cc_ui_activity(void) {
     cc_activity_at = timer_read32();
@@ -297,7 +302,7 @@ static bool cc_user_encoder_push(bool pressed) {
     if (cc_active == CC_NAV_LAYER || cc_active == CC_TEXT_LAYER) {
         if (pressed) {cc_enc_down = true; cc_enc_moved = false;}
         else {
-            if (!cc_enc_moved && cc_active == CC_TEXT_LAYER) tap_code16(KC_BTN1);
+            if (!cc_enc_moved && cc_active == CC_TEXT_LAYER) cc_mouse_left_click();
             cc_enc_down = false; cc_enc_moved = false;
         }
         return true;
