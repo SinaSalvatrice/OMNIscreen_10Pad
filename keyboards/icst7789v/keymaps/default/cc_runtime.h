@@ -1,4 +1,4 @@
-// 320x240 Layer Map runtime. Included only from keymap.c after SPI routines.
+﻿// 320x240 Layer Map runtime. Included only from keymap.c after SPI routines.
 #pragma once
 #include "cc_font.h"
 #include "cc_editor_types.h"
@@ -73,7 +73,6 @@ static uint16_t cc_k0_released = 0;
 static bool cc_k0_held = false;
 typedef enum { CC_RESET_WAIT_RELEASE, CC_RESET_IDLE, CC_RESET_HOLDING } cc_reset_state_t;
 static cc_reset_state_t cc_reset_state;
-static uint16_t cc_reset_started;
 
 static const uint8_t *cc_glyph(char ch) {
     if (ch >= '0' && ch <= '9') return font_numbers[ch - '0'];

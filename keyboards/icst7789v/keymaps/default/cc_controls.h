@@ -1,4 +1,4 @@
-// QMK Tap Dance + dedicated K0 + dual-mode EC11 controls.
+﻿// QMK Tap Dance + dedicated K0 + dual-mode EC11 controls.
 #pragma once
 #include "cc_editor_actions.h"
 #include "cc_detect.h"
@@ -236,14 +236,6 @@ void keyboard_post_init_user(void) {
     cc_dirty = true;
 }
 
-static bool omp_k0_custom(void) {
-    if (!omp_enabled) return false;
-    const omp_key_t *key = &omp_profile.layers[cc_active].keys[11];
-    uint8_t slots = key->mode == 0 ? 1 : key->mode == 1 ? 5 : 4;
-    for (uint8_t i = 0; i < slots; ++i) if (key->codes[i] > KC_TRNS) return true;
-    return false;
-}
-
 static bool cc_button_update(cc_button_t *button, pin_t pin) {
     const bool raw = gpio_read_pin(pin);
     if (raw != button->sample) {
@@ -472,7 +464,7 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
     return cc_encoder_rotate(record->event.key.row == KEYLOC_ENCODER_CW);
 }
 
-// CC Studio analog slider (GP28): relative Ctrl+Numpad+/− zoom.
+// CC Studio analog slider (GP28): relative Ctrl+Numpad+/âˆ’ zoom.
 // Movement is quantized around the last position, never jumps at startup.
 static int16_t cc_zoom_reference = -1;
 static uint8_t cc_zoom_layer = 255;
