@@ -22,6 +22,12 @@ static uint8_t cc_menu_selection = 0;
 static bool cc_display_mode = true;
 static bool cc_home_view = false;
 static bool cc_menu_view = false;
+// Protected firmware menus do not consume QMK/VIA layer slots.
+static uint8_t cc_internal_mode = 0; // 0 normal, 1 system, 2 display, 3 info
+static uint8_t cc_internal_selected = 0;
+static uint8_t cc_internal_confirm = 255;
+static void cc_internal_press(uint8_t index);
+static void cc_user_layer_change(uint8_t from, uint8_t to);
 static bool cc_help_view = false;
 static bool cc_color_view = false;
 static bool cc_matrix_test_view = false;
@@ -114,7 +120,10 @@ static void cc_draw_icon(uint8_t layer_index, uint16_t accent) {
 
 static void cc_activate_layer(uint8_t layer_index) {
     if (layer_index >= omp_layer_count()) return;
-    if (cc_active != layer_index) cc_previous = cc_active;
+    if (cc_active != layer_index) {
+        cc_user_layer_change(cc_active, layer_index);
+        cc_previous = cc_active;
+    }
     cc_active = layer_index;
     cc_preview = layer_index;
     cc_home_view = layer_index == 0;
@@ -527,6 +536,44 @@ static void cc_menu_screen(void) {
     }
 }
 
+static void cc_internal_screen(void) {
+    static const char *sys[10] = {
+        "MATRIX", "SLIDER", "DEVICE INFO", "TD SPEED", "DISPLAY",
+        "COLOR TEST", "RESTART", "BOOTLOADER", "CLEAR EEPROM", "BACK"
+    };
+    static const char *disp[10] = {
+        "START VIEW", "TIMEOUT", "BACKLIGHT", "LAYER INDEX", "ENC MODE",
+        "COLOR TEST", "MATRIX", "SAVE", "HOME VIEW", "BACK"
+    };
+    const char **items = cc_internal_mode == 2 ? disp : sys;
+    cc_background();
+    cc_draw_text(11, 37, cc_internal_mode == 2 ? "DISPLAY SETTINGS" :
+                         cc_internal_mode == 3 ? "DEVICE INFORMATION" : "SYSTEM SETTINGS", 2, C_CYAN);
+    if (cc_internal_mode == 3) {
+        cc_draw_text(13, 85, "RP2040 / OMNIPAD", 1, C_WHITE);
+        cc_draw_text(13, 106, "QMK / VIA HID / USB", 1, C_WHITE);
+        cc_draw_text(13, 127, "FIRMWARE V7", 1, C_WHITE);
+        cc_draw_text(13, 180, "K10 / K0: BACK", 1, C_YELLOW);
+        return;
+    }
+    for (uint8_t i = 0; i < 10; ++i) {
+        uint16_t x = i < 5 ? 12 : 163;
+        uint16_t y = 65 + (i % 5) * 28;
+        lcd_fill(x, y, 143, 24, cc_internal_selected == i ? 0x2C96 : 0x2145);
+        char key[8];
+        (void)snprintf(key, sizeof(key), "K%d", (int)(i+1));
+        cc_draw_text(x + 5, y + 8, key, 1, C_YELLOW);
+        cc_draw_text(x + 31, y + 8, items[i], 1, C_WHITE);
+    }
+    if (cc_internal_confirm != 255) {
+        lcd_fill(5, 58, 310, 150, 0x0000);
+        cc_draw_text(12, 93, "CONFIRM DANGEROUS ACTION?", 1, C_YELLOW);
+        cc_draw_text(12, 120, "PRESS SAME KEY AGAIN", 1, C_WHITE);
+        cc_draw_text(12, 144, "K10 / K0: CANCEL", 1, C_CYAN);
+    }
+    cc_draw_text(9, 225, "TURN SELECT / PUSH ENTER / K0 BACK", 1, C_CYAN);
+}
+
 static void cc_help_screen(void) {
     cc_background();
     cc_draw_text(12, 40, "MODULE HELP", 2, C_CYAN);
@@ -566,7 +613,7 @@ static bool cc_custom_screen_selected(void) {
 
 static void cc_redraw(void) {
     if (!panel_ready) return;
-    if (cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view || cc_eeprom_confirm ||
+    if (cc_internal_mode || cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view || cc_eeprom_confirm ||
         cc_reset_state == CC_RESET_HOLDING || cc_custom_screen_selected()) cc_layer_screen_invalid = true;
     if (cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view) omp_screen_invalid = true;
     if (cc_reset_state == CC_RESET_HOLDING) {
@@ -574,7 +621,8 @@ static void cc_redraw(void) {
         lcd_fill(0, 0, LCD_W, LCD_H, C_BLACK);
         cc_draw_text(15, 84, "HOLD BOTH 5S TO RESET", 2, C_YELLOW);
         cc_draw_text(15, 119, "RELEASE TO CANCEL", 1, C_WHITE);
-    } else if (cc_eeprom_confirm) {
+    } else if (cc_internal_mode) cc_internal_screen();
+    else if (cc_eeprom_confirm) {
         if (!cc_eeprom_confirm_visible) {
             omp_screen_invalid = true;
             lcd_fill(0, 0, LCD_W, LCD_H, C_BLACK);
@@ -596,7 +644,7 @@ static void cc_redraw(void) {
     // Only non-safety views permit user-positioned decorations. Menu and
     // tester are deliberately protected against obscured controls.
     if (omp_enabled && omp_profile.screen.enabled && !cc_custom_screen_selected() &&
-        !cc_menu_view && !cc_matrix_test_view && !cc_eeprom_confirm &&
+        !cc_internal_mode && !cc_menu_view && !cc_matrix_test_view && !cc_eeprom_confirm &&
         cc_reset_state != CC_RESET_HOLDING && !cc_help_view && !cc_color_view)
         omp_screen_overlay_render(cc_view_kind());
     cc_dirty = false;

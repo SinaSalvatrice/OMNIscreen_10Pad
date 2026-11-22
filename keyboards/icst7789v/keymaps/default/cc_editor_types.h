@@ -206,6 +206,41 @@ static void omp_load(void) {
         omp_active_slot = 0;
     }
     omp_enabled = first || second;
+    // Older app profiles have seven layers. Preserve all their configured
+    // actions, append a working MEDIA layer in RAM, and do not rewrite flash.
+    if (omp_enabled && omp_profile.layer_count == 7) {
+        omp_layer_t *media = &omp_profile.layers[7];
+        *media = omp_profile.layers[1];
+        memset(media->name, 0, sizeof(media->name));
+        memcpy(media->name, "MEDIA", 5);
+        media->accent = cc_layers[7].accent_rgb565;
+        for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
+            omp_key_t *key = &media->keys[i];
+            key->mode = 0;
+            key->term = 220;
+            memset(key->codes, 0, sizeof(key->codes));
+            key->codes[0] = cc_layers[7].taps[i];
+            memset(key->label, 0, sizeof(key->label));
+            strncpy(key->label, cc_layers[7].labels[i], sizeof(key->label)-1u);
+        }
+        media->keys[10].mode = 0;
+        media->keys[10].term = 220;
+        memset(media->keys[10].codes, 0, sizeof(media->keys[10].codes));
+        media->keys[10].codes[0] = KC_MPLY;
+        strcpy(media->keys[10].label, "PLAY");
+        media->keys[11].mode = 0;
+        media->keys[11].term = 220;
+        memset(media->keys[11].codes, 0, sizeof(media->keys[11].codes));
+        strcpy(media->keys[11].label, "K0");
+        media->encoders[0] = KC_MPRV;
+        media->encoders[1] = KC_MNXT;
+        media->slider.mode = 1; // Relative volume keys work without a desktop app.
+        media->slider.low = KC_VOLD;
+        media->slider.high = KC_VOLU;
+        media->slider.step = 64;
+        media->slider.deadband = 12;
+        omp_profile.layer_count = 8;
+    }
 }
 
 static bool omp_store(void) {

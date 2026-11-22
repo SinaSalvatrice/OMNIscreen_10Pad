@@ -361,17 +361,20 @@ static void omp_slider_update(int16_t value) {
     }
     int16_t delta = value - omp_slider_reference;
     if (!delta || (delta > -(int16_t)slider->deadband && delta < slider->deadband)) return;
-    if (slider->mode >= 2) {
+    if (slider->mode >= 2 && slider->mode <= 4) {
         uint8_t brightness = ((uint32_t)value * RGBLIGHT_LIMIT_VAL + 511u) / 1023u;
         if (slider->mode != 3) omp_brightness_override[0] = brightness;
         if (slider->mode != 2) omp_brightness_override[1] = brightness;
         omp_slider_reference = value;
         omp_event(8);
     } else if (slider->mode == 5) {
-        // Host-controlled absolute Windows volume: no relative VOLU/VOLD
-        // events. The desktop app consumes the existing slider telemetry.
-        omp_slider_reference = value;
-        omp_event(8);
+        // Fallback must work with no PC app: emit relative volume events.
+        // The editor can still read telemetry, but must not apply volume twice.
+        if (delta >= slider->step || delta <= -(int16_t)slider->step) {
+            omp_tap(delta > 0 ? KC_VOLU : KC_VOLD);
+            omp_slider_reference += delta > 0 ? slider->step : -(int16_t)slider->step;
+            omp_event(8);
+        }
     } else if (slider->mode == 1 && (delta >= slider->step || delta <= -(int16_t)slider->step)) {
         omp_tap(delta > 0 ? slider->high : slider->low);
         omp_slider_reference += delta > 0 ? slider->step : -(int16_t)slider->step;

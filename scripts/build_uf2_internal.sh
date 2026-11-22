@@ -39,6 +39,8 @@ else
     echo "WARNING: python3 unavailable here; using existing generated header"
 fi
 
+python3 "$PROJECT_ROOT/scripts/check_standalone_keymap.py"
+
 cd "$QMK_HOME"
 
 echo "QMK_HOME: $QMK_HOME"
@@ -84,9 +86,9 @@ cp -- "$UF2" "$temporary_uf2"
 test -s "$temporary_uf2"
 mv -f -- "$temporary_uf2" "$published_uf2"
 
-# QMK's intermediate copies must not linger as alternative flash files.
+# QMK intermediate copies must not linger as alternate flash files.
 rm -f -- "$UF2" "$QMK_HOME/.build/${KEYBOARD}_${KEYMAP}.uf2"
-# Older build output files are disposable. Never create an Archiv folder.
+# Retain only the canonical UF2 and single build log; never create an Archiv.
 find "$build_dir" -type f \( -iname '*.uf2' -o -iname '*.log' \) \
     ! -path "$published_uf2" ! -path "$build_dir/OmniPad-build.log" -delete
 echo

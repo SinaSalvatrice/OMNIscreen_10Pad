@@ -369,3 +369,101 @@ This source-versus-build translation does **not** fix a missing I2C
 device (`PCF ERROR` / `ADXL NOT FOUND`).
 
 No GitHub Actions. Compile and verify locally before flashing.
+
+## Standalone OmniPad QMK keymap (2026-11-22)
+
+This is the **hardware fallback keymap**, usable with no running OmniPad desktop app.
+The app can continue storing per-layer actions in the device's OMP profile.
+Firmware-reserved double taps, modifier exceptions and the protected menus
+continue to work even with a stored OMP profile.
+
+### Layer indices (VIA / QMK)
+
+| Index | Layer | K1 | K2 | K3 | K4 | K5 | K6 | K7 | K8 | K9 | K10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | CCSTUDIO | Hide | Lock | Play | View | Shift | Component | Animation | Pipette | Ctrl | Alt |
+| 1 | DEFAULT | Esc | Enter | Tab | Backspace | Shift | Delete | Explorer | Desktop | Ctrl | Alt |
+| 2 | NAV | Home | PageUp | Up | End | Shift | Left | Down | Right | Ctrl | Alt |
+| 3 | TEXT | Undo | Redo | Bold | Italic | Shift | Copy | Paste | Cut | **Space** | Enter |
+| 4 | SHORTCUT | Copy | Paste | Cut | All | Shift | Undo | Redo | Save | Clipboard history | Screenshot |
+| 5 | MACROS | Slot 1 | Slot 2 | Slot 3 | Slot 4 | Record toggle | Slot 5 | Slot 6 | Slot 7 | Replay | Bank A/B |
+| 6 | SETTINGS (RGB) | On/off | Hue - | Hue + | **Save** | Zone | Brightness - | Brightness + | Speed | Palette | Back |
+| 7 | MEDIA | Mute | Volume - | Volume + | Stop | Shift | Previous | Next | Play/Pause | Ctrl | Alt |
+
+Two short taps within the configurable term (default **220 ms**) enter:
+K1=DEFAULT, K2=NAV, K3=TEXT, K4=SHORTCUT, K6=MEDIA,
+K7=MEDIA, K8=MACROS, K9=CCSTUDIO.
+On TEXT, K9 always inserts a space; return to CCSTUDIO from there via
+the K0 display/layer selector or another working layer.
+Single taps on double-tap candidates are buffered until the term expires;
+long presses remain possible. A long NAV K2 sends PageDown.
+
+**K0**: one press toggles display/encoder control; two presses return to
+DEFAULT; three presses toggle the matrix diagnostic; holding ~620 ms opens
+the RGB layer. **K0 and encoder PUSH together** open protected internal
+SYSTEM controls instead. The old **hold both for 5 s = EEPROM erase**
+shortcut has been removed. Dangerous SYSTEM actions now require a second
+press of the same selected key, and K10 cancels.
+
+SYSTEM: K1 matrix tester; K2 slider/ADC viewer; K3 device info; K4 cycle
+tap-dance term; K5 DISPLAY submenu; K6 panel color test; K7 restart,
+K8 UF2 bootloader, K9 clear EEPROM (all three confirmation-gated); K10 back.
+DISPLAY: start screen (layer list/home), backlight timeout
+(off/30 s/60 s/5 min), binary backlight on/off, layer list/encoder mode,
+panel color test, matrix tester, save and back.
+Physical brightness PWM, live USB connection diagnosis and rotation presets
+are **not** implemented here.
+
+### Encoder and slide potentiometer
+
+| Layer | Rotate encoder | PUSH | Slider |
+| --- | --- | --- | --- |
+| CCSTUDIO | Scroll up/down | Left click | Zoom |
+| DEFAULT | Scroll up/down | Left click | Zoom |
+| NAV | Windows Alt+Tab selector | Hold+rotate: Win+Ctrl+Left/Right desktops | Zoom |
+| TEXT | Cursor left/right | Left click; held+rotate = Shift+arrows | Vertical scroll |
+| SHORTCUT | Undo/Redo | Save | Zoom |
+| MACROS | Select slot | Run selected preset | Disabled |
+| SETTINGS | Preview effect (main/frame) | Reserved for effect UI | Brightness |
+| MEDIA | Previous/next track | Play/Pause | Relative volume |
+
+Alt+Tab selection releases Alt after ~800 ms without a further encoder
+step. Windows virtual-desktop changes are immediate for each
+Win+Ctrl+arrow, not deferred to release of the encoder PUSH.
+Text selection sends no additional click or Enter on release.
+
+The RGB layer previews effects without writing EEPROM. K4 commits the
+current 14-main / 43-frame zone settings; exiting without K4 restores
+the prior state. This is a logical zone split on the existing GP29 LED chain.
+
+MACROS offers two 7-action preset banks even without an OMP profile:
+Bank A = Copy / Paste / Cut / Select All / Save / Undo / Redo.
+Bank B = Explorer / Desktop / Screenshot / Clipboard history / Save As /
+New browser tab / Close tab. K5 records a **volatile sequence of selected
+presets**; K9 replays it. This specific on-device recording is **RAM-only**,
+not persisted after power loss. Configure durable custom macros using
+the stored OMP profile. Previous profile data is never cleared automatically.
+
+The eight CCSTUDIO action keys emit Ctrl+Alt+1,2,3,4,6,7,8 respectively;
+the matching app-level shortcut handlers must exist for those actions.
+QMK cannot operate app-specific editing controls without an assigned
+shortcut on the Windows side.
+
+### Local build and verification
+
+Run `build_uf2.bat` locally (GitHub Actions remain disabled).
+The build validates JSON/layout maps and compiles firmware with QMK. On
+success the project's `build/` folder contains **OmniPad.uf2** as the
+only UF2; the wrapper writes **OmniPad.log** even when a build fails.
+Old historical UF2 files under `build/` are removed **only after**
+the new firmware was published successfully.
+
+Before flashing, **export the existing VIA and OMP profiles**. The new
+eighth layer changes VIA's dynamic layer layout; previously saved VIA
+maps may need reinitialization/import. A seven-layer OMP profile is
+migrated in RAM to add MEDIA without erasing the stored profile.
+
+This code was prepared without a local QMK compiler or the physical
+10Pad. Run the local build, then check every dedicated GPIO input,
+matrix key, encoder press/turn, slider ADC, both LED zones, and
+safe/system reset protections before merging or distributing firmware.

@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-rem One Windows entrypoint, one UF2, one overwritten build log.
+rem One Windows entrypoint, one UF2 and one overwritten build log.
 set "MSYSTEM=MINGW64"
 set "PROJECT_ROOT=%~dp0"
 set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
@@ -59,7 +59,20 @@ if not errorlevel 1 (
 ) else (
     python "%PROJECT_ROOT%\scripts\generate_layer_system.py"
 )
-if errorlevel 1 exit /b 4
+if errorlevel 1 (
+    echo ERROR: Layer metadata generation failed.
+    exit /b 4
+)
+where py >nul 2>nul
+if not errorlevel 1 (
+    py -3 "%PROJECT_ROOT%\scripts\check_standalone_keymap.py"
+) else (
+    python "%PROJECT_ROOT%\scripts\check_standalone_keymap.py"
+)
+if errorlevel 1 (
+    echo ERROR: Standalone keymap check failed.
+    exit /b 5
+)
 
 git -C "%PROJECT_ROOT%" rev-parse HEAD
 echo Building icst7789v:default from current source tree...
