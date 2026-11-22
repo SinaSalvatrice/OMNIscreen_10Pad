@@ -229,6 +229,8 @@ void keyboard_post_init_user(void) {
     layer_move(omp_enabled ? omp_profile.default_layer : 1); // Default is layer 1 on every USB boot.
     cc_ui_config_load();
     cc_display_mode = false; // A working encoder is more useful than a persistent preview.
+    cc_home_view = cc_display_start_index != 0;
+    cc_screen_selection = cc_display_start_index ? CC_SCREEN_AUTO : CC_SCREEN_LAYERS;
     lcd_init(); // Known-good GPIO bootstrap then QMK HW SPI.
     cc_adxl_init(); // No I2C pin ownership unless enabled after matrix relocation.
     cc_dirty = true;
