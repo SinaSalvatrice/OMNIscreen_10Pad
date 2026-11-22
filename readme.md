@@ -143,7 +143,7 @@ The diagnostics firmware still uses normal QMK key scanning. When you attach swi
 | Matrix rows (3) | GP12, GP13, GP14 | Reserved/configured |
 | Matrix columns (4) | GP15, GP26, GP27, GP0 | Active |
 | Slide potentiometer ADC2 | GP28 | Active |
-| External NeoPixel DIN | GP29 | 57 LEDs |
+| External NeoPixel DIN | GP29 | 73 LEDs (30 Matrix + 43 Frame) |
 | Spare | GP1 | Unused |
 
 **Matrix diode direction: COL2ROW.** The diode cathode (stripe) faces the row wire. Matrix key positions are 4 + 4 + 3; the last key is wide physically but electrically still a single switch, with [row 2, column 3] unused. This is a provisional electrical layout and can be adapted to the eventual enclosure.
@@ -242,49 +242,56 @@ QWERTZ-Layout ausgelegt: QMK sendet für „Z“ die US-HID-Position `KC_Y`.
 Bei Umstellung des PC-Layouts auf US müssen die beiden Belegungen in VIA
 entsprechend angepasst werden.
 
-## Additional 43 Frame LEDs — second independent RGB zone
+## 6×5 RGB matrix + unchanged 43 Frame LEDs (November 2026)
 
-The single GP29 WS2812/SK6812 chain now has **57 LEDs**:
+All **73 addressable LEDs** form one GP29 data chain. The new
+**30-pixel matrix** occupies indices **0–29** (six rows × five columns);
+the original **43 Frame LEDs** are appended at indices **30–72**.
+The Frame wiring sequence stays unchanged relative to itself.
 
-| Logical zone | Physical LED index (zero-based) | Count | Driver |
+| Zone | Physical LED index | Count | Editing |
 |---|---|---:|---|
-| Original main LEDs (keys/display) | 0–13 | 14 | QMK RGBLight / existing VIA main palette |
-| Frame LEDs, appended after the original 14 | 14–56 | **43** | Independent custom Frame renderer |
+| Keys / Tasten | Subset of 0–29 | Initially 16 | Independent per layer |
+| Slider / Regler | Subset of 0–29 | Initially 3 | Independent per layer |
+| Encoder | Subset of 0–29 | Initially 2 | Independent per layer |
+| K0 | Subset of 0–29 | Initially 2 | Independent per layer |
+| Display | Subset of 0–29 | Initially 7 | Independent per layer |
+| Frame | 30–72 | **43** | Independent per layer, preserved |
 
-**Wiring:** connect the DIN of the first Frame LED to the DOUT of LED 13,
-then daisy-chain the remaining 42 Frame LEDs. Common GND is mandatory.
-All LEDs still use the existing GP29 data output; **no second GPIO** needed.
-The two zones are logically separate, not two electrically independent ports.
+**Wiring:** connect matrix LED 0 to GP29 (suitable 3.3V-to-5V level
+shifter recommended), follow the actual matrix's data chain,
+then connect **LED 29 DOUT → first Frame DIN**. Provide common ground.
+The matrix's serial order can be straight-row or serpentine, and its
+assignments are adjustable by individual LED in OmniPad Editor; the
+factory allocation above is a starting layout, not an assertion about
+the photographed wiring.
 
-**Power supply warning:** 57 RGB LEDs can theoretically require around
-**3.42 A at 5 V** at maximum full-white (57 × 60 mA), of which the Frame
-alone could use about **2.58 A**. Provide a correctly sized external regulated
-5 V supply, common ground, suitable wiring / power injection and preferably a
-3.3 V to 5 V data level shifter. Do **not** power this array through the
-RP2040-Zero 3V3 pin. The firmware caps both zones at 64/255 brightness,
-but this is not a substitute for correctly rated hardware.
+**Power:** 73 RGB LEDs may draw up to approximately **4.38 A at 5 V**
+in theoretical full-white mode (73 × 60 mA). The Frame alone may draw
+2.58 A. An appropriately rated external regulated 5-V supply with
+adequate wiring, common ground and optional power injection is required.
+Never power the strip from RP2040-Zero 3V3. QMK caps brightness at 64/255,
+but that does not replace safe power design.
 
-In VIA > **Lighting** there are three submenus:
-1. Main LEDs (0–13) – QMK: normal QMK effect, RGB color, speed and brightness.
-2. Main LEDs (0–13) – Palette: existing one/two-color choices.
-3. **Frame LEDs (14–56):** independent on/off, effect (solid, alternating,
-   21+22 split, moving two-color chase, rainbow, breathing), own brightness,
-   two colors, speed and reverse direction.
+The RGBLight built-in effect range is **0–29**; the Frame remains outside
+it. The OmniPad renderer updates the five editable matrix zones plus the
+existing independent Frame zone, flushing the 73-LED strip once per frame.
+The Frame can be switched off without disabling the matrix.
 
-The default Frame state is **enabled, solid warm color, brightness 24/255**.
-Switching off the main QMK RGBLight does **not** switch off the Frame LEDs,
-and the Frame can be switched off without affecting the main LEDs.
+**EEPROM:** The existing 17-byte Main/Frame configuration stays in the
+same leading storage bytes, followed by a versioned matrix-zone block
+containing five independent zones on each of up to 12 layers and the
+30-pixel assignment map. The expanded QMK user datablock occupies
+651 bytes, which can shift VIA storage positions.
+**Export the OmniPad profile AND VIA bindings/macros before flashing**.
+The two existing 6144-byte OmniPad profile slots beginning at EEPROM
+address 4096 remain unchanged. The editor requires the new firmware
+before writing the new LED configuration.
 
-**Configuration persistence:** Frame and existing main palette settings are
-stored together in the QMK user EEPROM datablock (v2, 17 bytes). The first
-8 bytes match the old v1 layout, allowing the main palette to be migrated.
-QMK's VIA keymap storage location may shift after the datablock expansion;
-**export the current VIA keymap/macros before flashing** and reload as needed.
-
-The Frame uses a single buffered WS2812 flush for all 43 LEDs per animation
-frame instead of one chain flush for each LED, to avoid excessive key latency.
-QMK's built-in effect range is limited to 14 LEDs and does not animate the
-Frame accidentally. No GitHub Actions or remote flashing are used.
+The desktop editor's legacy 57-LED layout format is automatically
+migrated: its former 14 Main positions are replaced with a 30-pixel
+matrix grid while its former 43 Frame positions remain intact.
+No GitHub Actions or automatic device flash is used.
 
 ## VIA: USB manufacturer/product ID (November 2026)
 

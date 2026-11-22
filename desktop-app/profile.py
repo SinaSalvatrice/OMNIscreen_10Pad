@@ -5,6 +5,7 @@ import json
 import struct
 import unicodedata
 from pathlib import Path
+from led_zones import default_zone_map, validate_zone_map, MATRIX_ZONES
 
 MAX_LAYERS = 12
 KEY_COUNT = 12
@@ -109,7 +110,8 @@ def layer_config(index):
             "keys": [key_config() for _ in range(KEY_COUNT)], "encoders": [0, 0],
             "slider": {"mode": 0, "reverse": False, "deadband": 4, "step": 64,
                        "low": 0x0156, "high": 0x0157, "min": 0, "max": 1023},
-            "lighting": [zone_config(), zone_config("#709fba")]}
+            "lighting": [zone_config(), zone_config("#709fba")],
+            "matrix_zones": [zone_config() for _ in MATRIX_ZONES]}
 
 
 def default_screen_themes():
@@ -154,7 +156,8 @@ def zones_from_via(snapshot):
 def default_profile(snapshot=None):
     spec = json.loads((ROOT / "design/layer_system.json").read_text(encoding="utf-8"))
     profile = {"schema": "omnipad-profile", "version": PROFILE_VERSION, "default_layer": 1,
-               "layers": [], "snippets": [], "screen": screen_config()}
+               "layers": [], "snippets": [], "screen": screen_config(),
+               "led_zone_map": default_zone_map()}
     count = len(snapshot["layers"]) if snapshot else len(spec["layers"])
     count = min(count, MAX_LAYERS)
     if snapshot:
@@ -382,6 +385,15 @@ def german_key(character):
 def encode_profile(profile):
     if profile.get("schema") != "omnipad-profile" or profile.get("version") != PROFILE_VERSION:
         raise ValueError("Unbekanntes OmniPad-Profilformat.")
+    validate_zone_map(profile.get("led_zone_map", default_zone_map()))
+    for layer in profile["layers"]:
+        matrix = layer.get("matrix_zones", [zone_config() for _ in MATRIX_ZONES])
+        if len(matrix) != len(MATRIX_ZONES):
+            raise ValueError("Jeder Layer braucht fünf Matrix-Lichtzonen.")
+        encode_matrix = encode_lighting
+        # Reuse the existing two-zone validator without modifying the wire profile.
+        for zone in matrix:
+            encode_matrix([zone, zone])
     count = integer(len(profile["layers"]), 1, MAX_LAYERS, "Layeranzahl")
     integer(profile["default_layer"], 0, count - 1, "Startlayer")
     validate_screen(profile["screen"])

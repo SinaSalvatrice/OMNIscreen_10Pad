@@ -3,8 +3,8 @@
 #include "cc_editor_actions.h"
 #include "cc_detect.h"
 #include "cc_editor_protocol.h"
-#include "cc_editor_visuals.h"
 #include "cc_via_rgb.h"
+#include "cc_editor_visuals.h"
 
 static void cc_clear_eeprom(void) {
     eeprom_update_dword((uint32_t *)(uintptr_t)omp_slot_address(0), 0);
@@ -159,7 +159,7 @@ void keyboard_post_init_user(void) {
     gpio_set_pin_input_high(ENCODER_SW);
     gpio_set_pin_input_high(K0_SW);
 #ifdef RGBLIGHT_ENABLE
-    cc_rgb_load(); // Restrict QMK RGB effects to LEDs 0..13; load independent Frame settings.
+    cc_rgb_load(); // 30 matrix LEDs, followed by unchanged 43 Frame LEDs.
 #endif
     omp_load();
     layer_move(omp_enabled ? omp_profile.default_layer : 1); // Default is layer 1 on every USB boot.
