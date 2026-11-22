@@ -28,7 +28,7 @@ def icon_rows(layer):
 
 def validate(data):
     layers = data["layers"]
-    assert len(layers) == 7 and [l["id"] for l in layers[:2]] == ["CCSTUDIO", "DEFAULT"], "Expected seven ordered VIA layers"
+    assert len(layers) == 8 and [l["id"] for l in layers[:2]] == ["CCSTUDIO", "DEFAULT"], "Expected eight ordered VIA layers"
     keys = data["physical_keys"]
     assert data["key_layout"] == [4, 4, 2] and data["key_count"] == 10
     assert data["wide_key"] == 9 and data["tall_key"] == 5
@@ -140,7 +140,7 @@ def preview(data, selected, filename):
                 '<text x="%d" y="%d" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">%s</text>'%
                  (x+width//2,y+height//2+5,escape(label))]
     parts+=['<rect x="0" y="216" width="320" height="24" fill="#18242E"/>',
-             '<text x="7" y="231" font-family="Arial" font-size="9" fill="#C6D7DD">K0  1x MODE   2x DEFAULT   HOLD MENU</text>',
+             '<text x="7" y="231" font-family="Arial" font-size="9" fill="#C6D7DD">K0  1x MODE   2x DEFAULT   HOLD RGB</text>',
              '<text x="312" y="231" font-family="Arial" font-size="8" text-anchor="end" fill="'+color+'">'+("TAP DANCE" if selected==0 else "MACRO MAP")+'</text>',
              '</svg>']
     PREVIEWS.mkdir(parents=True, exist_ok=True)
@@ -154,7 +154,7 @@ def main():
     preview(data,0,"cc_studio.svg")
     preview(data,1,"default.svg")
     preview(data,6,"settings.svg")
-    print("Generated seven VIA layer descriptions and screen previews.")
+    print("Generated eight VIA layer descriptions and screen previews.")
 
 if __name__ == "__main__":
     main()
