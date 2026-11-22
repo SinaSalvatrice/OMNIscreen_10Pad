@@ -43,6 +43,16 @@ if errorlevel 1 (
     echo ERROR: Layer metadata generation failed.
     exit /b 4
 )
+where py >nul 2>nul
+if not errorlevel 1 (
+    py -3 "%PROJECT_ROOT%\\scripts\\check_standalone_keymap.py"
+) else (
+    python "%PROJECT_ROOT%\\scripts\\check_standalone_keymap.py"
+)
+if errorlevel 1 (
+    echo ERROR: Standalone keymap check failed.
+    exit /b 5
+)
 echo QMK_HOME: %QMK_HOME%
 echo.
 
