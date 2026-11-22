@@ -223,6 +223,9 @@ static bool cc_td_event(uint8_t index, bool pressed) {
         s->origin = cc_active;
         s->code = omp_enabled ? omp_profile.layers[cc_active].keys[index].codes[0] :
                   dynamic_keymap_get_keycode(cc_active, cc_matrix_row[index], cc_matrix_col[index]);
+        // Older VIA EEPROM layouts may contain an uninitialized eighth layer.
+        if (s->code == KC_NO && cc_active < CC_LAYER_COUNT)
+            s->code = cc_layers[cc_active].taps[index];
         s->started = timer_read();
         s->down = true; s->held = s->second = false;
     } else if (s->down) {
@@ -333,6 +336,15 @@ static bool cc_special_key(uint8_t index, bool pressed) {
     }
     if (cc_active == CC_RGB_LAYER) {
         if (pressed) cc_rgb_key(index);
+        return true;
+    }
+    // Reserved layer-specific modifier exceptions work regardless of app state.
+    if (index == 9 && cc_active == CC_TEXT_LAYER) {
+        if (pressed) register_code(KC_ENT); else unregister_code(KC_ENT);
+        return true;
+    }
+    if (index == 9 && cc_active == 4) {
+        if (pressed) tap_code16(LGUI(LSFT(KC_S)));
         return true;
     }
     if (omp_enabled) return false;
