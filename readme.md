@@ -152,7 +152,7 @@ NeoPixels require a proper shared ground, adequate **external power** for the nu
 
 ## QMK UF2 build
 
-The repository is a **QMK keyboard definition**, not a full QMK checkout. The Windows self-hosted CI and `build_uf2.bat`/`build_uf2.sh` copy `keyboards/icst7789v` into a separate QMK checkout. Windows:
+The repository is a **QMK keyboard definition**, not a full QMK checkout. Run **only `build_uf2.bat`** on Windows. The helper `scripts/build_uf2_internal.sh` is not a second user-facing build entrypoint.
 
 ```bat
 build_uf2.bat
@@ -164,8 +164,11 @@ With an already configured QMK checkout, after copying `keyboards/icst7789v` int
 qmk compile -kb icst7789v -km default
 ```
 
-The build script publishes the current firmware as `build/OmniPad.uf2`.
-Earlier OmniPad output filenames are moved to `build/Archiv` after a successful build.
+**One build → one output:** `build/OmniPad.uf2` and `build/OmniPad-build.log`.
+The log is overwritten on every run; a successful build atomically replaces the UF2.
+On failure, the last working UF2 is retained and the error is in that same log.
+No numbered builds, per-version UF2s, debug BATs or archive folders.
+Builds from Git worktrees also publish to the primary checkout's `build/` directory.
 To flash, unplug the RP2040-Zero, hold BOOT while plugging USB in, and copy `OmniPad.uf2` to the RPI-RP2 drive.
 
 ### Optional NeoPixels
