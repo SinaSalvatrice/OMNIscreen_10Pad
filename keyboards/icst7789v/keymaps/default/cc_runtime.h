@@ -1,4 +1,4 @@
-﻿// 320x240 Layer Map runtime. Included only from keymap.c after SPI routines.
+// 320x240 Layer Map runtime. Included only from keymap.c after SPI routines.
 #pragma once
 #include "cc_font.h"
 #include "cc_editor_types.h"

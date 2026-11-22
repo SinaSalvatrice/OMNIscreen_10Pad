@@ -1,4 +1,4 @@
-﻿// QMK Tap Dance + dedicated K0 + dual-mode EC11 controls.
+// QMK Tap Dance + dedicated K0 + dual-mode EC11 controls.
 #pragma once
 #include "cc_editor_actions.h"
 #include "cc_detect.h"
@@ -464,7 +464,7 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
     return cc_encoder_rotate(record->event.key.row == KEYLOC_ENCODER_CW);
 }
 
-// CC Studio analog slider (GP28): relative Ctrl+Numpad+/âˆ’ zoom.
+// CC Studio analog slider (GP28): relative Ctrl+Numpad+/− zoom.
 // Movement is quantized around the last position, never jumps at startup.
 static int16_t cc_zoom_reference = -1;
 static uint8_t cc_zoom_layer = 255;
