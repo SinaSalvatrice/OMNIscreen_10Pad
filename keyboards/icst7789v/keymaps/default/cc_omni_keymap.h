@@ -205,16 +205,17 @@ static void cc_macro_playback(void) {
     cc_dirty = true;
 }
 static void cc_single_tap(uint8_t index, uint8_t origin, uint16_t code) {
-    if (omp_enabled && origin < omp_profile.layer_count) {
-        // Preserve the app's configured primary action without needing a
-        // running desktop process. Double-tap layer entry stays in firmware.
-        omp_tap(code);
-        return;
-    }
     if (origin == CC_MACRO_LAYER) {
-        if (index < 4) cc_macro_action(index);
-        if (index >= 5 && index <= 7) cc_macro_action(index - 1);
-        if (index == 8) cc_macro_playback();
+        if (index == 8) { cc_macro_playback(); return; }
+        if (!omp_enabled || cc_macro_recording) {
+            if (index < 4) cc_macro_action(index);
+            if (index >= 5 && index <= 7) cc_macro_action(index - 1);
+            return;
+        }
+    }
+    if (omp_enabled && origin < omp_profile.layer_count) {
+        // Preserve user-edited single actions while layer entry stays fixed.
+        omp_tap(code);
         return;
     }
     if (code != KC_NO && code != KC_TRNS) tap_code16(code);
@@ -360,7 +361,6 @@ static bool cc_special_key(uint8_t index, bool pressed) {
         if (pressed) tap_code16(LGUI(LSFT(KC_S)));
         return true;
     }
-    if (omp_enabled) return false;
     if (cc_active == CC_MACRO_LAYER && index == 4) {
         if (pressed) {
             if (!cc_macro_recording) cc_macro_recorded_count = 0;
@@ -373,5 +373,6 @@ static bool cc_special_key(uint8_t index, bool pressed) {
         if (pressed) {cc_macro_bank = !cc_macro_bank; cc_dirty = true;}
         return true;
     }
+    if (omp_enabled) return false;
     return false;
 }
