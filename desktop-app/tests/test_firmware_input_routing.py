@@ -13,18 +13,18 @@ KEYMAP = ROOT / "keyboards" / "icst7789v" / "keymaps" / "default"
 
 
 class HardwareInputRoutingTests(unittest.TestCase):
-    def test_k9_physical_matrix_is_2_2_in_every_source(self):
+    def test_k9_physical_matrix_is_2_1_in_every_source(self):
         design = json.loads((ROOT / "design" / "layer_system.json").read_text(encoding="utf-8"))
         physical = {key["id"]: (key["row"], key["col"]) for key in design["physical_keys"]}
-        self.assertEqual(physical["K9"], (2, 2))
+        self.assertEqual(physical["K9"], (2, 1))
         keyboard = json.loads((ROOT / "keyboards" / "icst7789v" / "keyboard.json").read_text(encoding="utf-8"))
-        self.assertEqual(keyboard["layouts"]["LAYOUT"]["layout"][8]["matrix"], [2, 2])
+        self.assertEqual(keyboard["layouts"]["LAYOUT"]["layout"][8]["matrix"], [2, 1])
         generated = (KEYMAP / "generated_layers.h").read_text(encoding="utf-8")
         rows = re.search(r"cc_matrix_row\[CC_KEY_COUNT\] = \{([^}]+)\}", generated).group(1)
         cols = re.search(r"cc_matrix_col\[CC_KEY_COUNT\] = \{([^}]+)\}", generated).group(1)
         coords = list(zip([int(x.strip()) for x in rows.split(",")],
                           [int(x.strip()) for x in cols.split(",")]))
-        self.assertEqual(coords[8], (2, 2))
+        self.assertEqual(coords[8], (2, 1))
         self.assertEqual(len(set(coords)), 10)
 
     def test_app_tap_dance_has_priority_over_fallback(self):
@@ -58,9 +58,10 @@ class HardwareInputRoutingTests(unittest.TestCase):
         self.assertIn("if (!omp_enabled)", layer_change)
         self.assertIn("cc_rgb_preview_begin()", layer_change)
 
-    def test_fallback_k9_ctrl_is_still_2_2(self):
+    def test_fallback_k9_ctrl_is_still_2_1(self):
         controls = (KEYMAP / "cc_controls.h").read_text(encoding="utf-8")
-        self.assertIn("if (row != 2 || col != 2) return false;", controls)
+        self.assertIn("if (row != 2 || col != 1) return false;", controls)
+        self.assertEqual(controls.count("!(row == 2 && col == 1)"), 2)
         self.assertIn("cc_activate_layer(0)", controls)
 
 

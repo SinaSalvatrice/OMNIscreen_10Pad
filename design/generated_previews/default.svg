@@ -83,28 +83,28 @@
 <text x="62" y="173" text-anchor="middle" font-family="Arial" font-size="9" fill="#ACBAC4">LAYER 01</text>
 <rect x="125" y="40" width="43" height="47" rx="4" fill="#263744" stroke="#40505E"/>
 <text x="130" y="51" font-family="Arial" font-size="8" fill="#8EADBC">K1</text>
-<text x="146" y="68" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">ESC</text>
+<text x="146" y="68" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">-</text>
 <rect x="172" y="40" width="43" height="47" rx="4" fill="#263744" stroke="#40505E"/>
 <text x="177" y="51" font-family="Arial" font-size="8" fill="#8EADBC">K2</text>
-<text x="193" y="68" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">ENTER</text>
+<text x="193" y="68" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">-</text>
 <rect x="219" y="40" width="43" height="47" rx="4" fill="#263744" stroke="#40505E"/>
 <text x="224" y="51" font-family="Arial" font-size="8" fill="#8EADBC">K3</text>
-<text x="240" y="68" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">TAB</text>
+<text x="240" y="68" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">UP</text>
 <rect x="266" y="40" width="43" height="47" rx="4" fill="#263744" stroke="#40505E"/>
 <text x="271" y="51" font-family="Arial" font-size="8" fill="#8EADBC">K4</text>
-<text x="287" y="68" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">BKSP</text>
+<text x="287" y="68" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">-</text>
 <rect x="125" y="95" width="43" height="102" rx="4" fill="#254653" stroke="#43737F"/>
 <text x="130" y="106" font-family="Arial" font-size="8" fill="#8EADBC">K5</text>
 <text x="146" y="151" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">SHIFT</text>
 <rect x="172" y="95" width="43" height="47" rx="4" fill="#263744" stroke="#40505E"/>
 <text x="177" y="106" font-family="Arial" font-size="8" fill="#8EADBC">K6</text>
-<text x="193" y="123" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">DEL</text>
+<text x="193" y="123" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">LEFT</text>
 <rect x="219" y="95" width="43" height="47" rx="4" fill="#263744" stroke="#40505E"/>
 <text x="224" y="106" font-family="Arial" font-size="8" fill="#8EADBC">K7</text>
-<text x="240" y="123" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">EXPL</text>
+<text x="240" y="123" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">DOWN</text>
 <rect x="266" y="95" width="43" height="47" rx="4" fill="#263744" stroke="#40505E"/>
 <text x="271" y="106" font-family="Arial" font-size="8" fill="#8EADBC">K8</text>
-<text x="287" y="123" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">DESK</text>
+<text x="287" y="123" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">RIGHT</text>
 <rect x="172" y="150" width="90" height="47" rx="4" fill="#254653" stroke="#43737F"/>
 <text x="177" y="161" font-family="Arial" font-size="8" fill="#8EADBC">K9</text>
 <text x="217" y="178" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">CTRL</text>
@@ -112,6 +112,6 @@
 <text x="271" y="161" font-family="Arial" font-size="8" fill="#8EADBC">K10</text>
 <text x="287" y="178" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="10" fill="#F4F8FB">ALT</text>
 <rect x="0" y="216" width="320" height="24" fill="#18242E"/>
-<text x="7" y="231" font-family="Arial" font-size="9" fill="#C6D7DD">K0  1x MODE   2x DEFAULT   HOLD RGB</text>
+<text x="7" y="231" font-family="Arial" font-size="9" fill="#C6D7DD">K0  1x MODE   2x DEFAULT   HOLD MENU</text>
 <text x="312" y="231" font-family="Arial" font-size="8" text-anchor="end" fill="#6CA5E5">MACRO MAP</text>
 </svg>
