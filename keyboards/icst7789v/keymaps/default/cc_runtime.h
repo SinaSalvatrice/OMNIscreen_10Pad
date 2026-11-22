@@ -538,8 +538,8 @@ static void cc_menu_screen(void) {
 
 static void cc_internal_screen(void) {
     static const char *sys[10] = {
-        "MATRIX", "SLIDER", "USB / VIA", "TD SPEED", "DISPLAY",
-        "RGB DIAG", "RESTART", "BOOTLOADER", "CLEAR EEPROM", "BACK"
+        "MATRIX", "SLIDER", "DEVICE INFO", "TD SPEED", "DISPLAY",
+        "COLOR TEST", "RESTART", "BOOTLOADER", "CLEAR EEPROM", "BACK"
     };
     static const char *disp[10] = {
         "START VIEW", "TIMEOUT", "BACKLIGHT", "LAYER INDEX", "ENC MODE",
@@ -548,7 +548,7 @@ static void cc_internal_screen(void) {
     const char **items = cc_internal_mode == 2 ? disp : sys;
     cc_background();
     cc_draw_text(11, 37, cc_internal_mode == 2 ? "DISPLAY SETTINGS" :
-                         cc_internal_mode == 3 ? "USB / VIA STATUS" : "SYSTEM SETTINGS", 2, C_CYAN);
+                         cc_internal_mode == 3 ? "DEVICE INFORMATION" : "SYSTEM SETTINGS", 2, C_CYAN);
     if (cc_internal_mode == 3) {
         cc_draw_text(13, 85, "RP2040 / OMNIPAD", 1, C_WHITE);
         cc_draw_text(13, 106, "QMK / VIA HID / USB", 1, C_WHITE);
