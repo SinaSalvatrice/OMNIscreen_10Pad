@@ -359,6 +359,11 @@ void matrix_scan_user(void) {
         if (!combo_latched) {
             combo_latched = true;
             if (omp_enabled) omp_release_all();
+            cc_enc_down = cc_enc_moved = false;
+            if (cc_nav_alt_down) {
+                unregister_code(KC_LALT);
+                cc_nav_alt_down = false;
+            }
             for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) cc_td[i].pending = false;
             cc_k0_tap_count = 0; cc_k0_held = true;
             cc_internal_mode = 1;
@@ -434,6 +439,10 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
         if (record->event.pressed) cc_ui_activity();
         if (cc_k9_down && record->event.pressed && !(row == 2 && col == 2))
             cc_k9_chord = true;
+        if (cc_nav_alt_down && record->event.pressed) {
+            unregister_code(KC_LALT);
+            cc_nav_alt_down = false;
+        }
         if (cc_matrix_test_view && !cc_internal_mode) {
             cc_matrix_test_record(row, col, record->event.pressed);
             return false;
