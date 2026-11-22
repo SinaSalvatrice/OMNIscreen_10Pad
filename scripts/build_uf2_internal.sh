@@ -73,25 +73,21 @@ if [[ ! -s "$UF2" ]]; then
     exit 3
 fi
 
-build_dir="$PROJECT_ROOT/build"
+# Publish atomically to the one shared output directory, including when
+# invoked from a detached development worktree.
+build_dir="$(to_msys_path "${BUILD_OUTPUT_DIR:-$PROJECT_ROOT/build}")"
 mkdir -p "$build_dir"
 published_uf2="$build_dir/OmniPad.uf2"
-temporary_uf2="$(mktemp "$build_dir/.OmniPad.XXXXXXXX")"
+temporary_uf2="$(mktemp "$build_dir/.OmniPad.XXXXXXXX.tmp")"
 trap 'rm -f -- "$temporary_uf2"' EXIT
 cp -- "$UF2" "$temporary_uf2"
+test -s "$temporary_uf2"
 mv -f -- "$temporary_uf2" "$published_uf2"
 
-# Move old project outputs aside only after the new firmware has been published.
-archive_dir=""
-for old_uf2 in "$build_dir"/ICST7789V.uf2 "$build_dir"/ICST7789V_*.uf2 \
-               "$build_dir"/OmniPad-*.uf2 "$build_dir"/OMNIscreen_10Pad_*.uf2; do
-    [[ -f "$old_uf2" ]] || continue
-    if [[ -z "$archive_dir" ]]; then
-        mkdir -p "$build_dir/Archiv"
-        archive_dir="$(mktemp -d "$build_dir/Archiv/UF2-XXXXXXXX")"
-    fi
-    mv -- "$old_uf2" "$archive_dir/"
-done
-
+# QMK's intermediate copies must not linger as alternative flash files.
+rm -f -- "$UF2" "$QMK_HOME/.build/${KEYBOARD}_${KEYMAP}.uf2"
+# Older build output files are disposable. Never create an Archiv folder.
+find "$build_dir" -type f \( -iname '*.uf2' -o -iname '*.log' \) \
+    ! -path "$published_uf2" ! -path "$build_dir/OmniPad-build.log" -delete
 echo
 echo "SUCCESS: $published_uf2"
