@@ -105,9 +105,22 @@ static void cc_rgb_preview_commit(void) {
 static void cc_user_layer_change(uint8_t from, uint8_t to) {
     if (from == CC_RGB_LAYER && to != CC_RGB_LAYER) cc_rgb_preview_cancel();
     if (from != CC_RGB_LAYER && to == CC_RGB_LAYER) cc_rgb_preview_begin();
+    if (from == CC_MACRO_LAYER && to != CC_MACRO_LAYER) cc_macro_recording = false;
     if (cc_nav_alt_down) {
         unregister_code(KC_LALT);
         cc_nav_alt_down = false;
+    }
+    for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
+        cc_td_t *s = &cc_td[i];
+        if (s->held) {
+            if (s->origin == CC_NAV_LAYER && i == 1) unregister_code(KC_PGDN);
+            else if (s->origin != CC_MACRO_LAYER && s->code != KC_NO &&
+                     s->code != KC_TRNS) {
+                if (omp_enabled) omp_emit(s->code, false);
+                else unregister_code16(s->code);
+            }
+        }
+        s->down = s->pending = s->second = s->held = false;
     }
     cc_enc_down = cc_enc_moved = false;
     cc_ui_activity();
