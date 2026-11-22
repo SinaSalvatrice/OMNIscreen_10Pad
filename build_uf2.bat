@@ -1,5 +1,13 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
+if /I "%~1"=="--internal" goto run_build
+if not exist "%~dp0build" mkdir "%~dp0build"
+call "%~f0" --internal >"%~dp0build\\OmniPad.log" 2>&1
+set "BUILD_STATUS=!ERRORLEVEL!"
+type "%~dp0build\\OmniPad.log"
+exit /b !BUILD_STATUS!
+
+:run_build
 set "MSYSTEM=MINGW64"
 
 set "PROJECT_ROOT=%~dp0"
