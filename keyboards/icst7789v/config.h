@@ -19,7 +19,7 @@
 #define EECONFIG_USER_DATA_SIZE 651
 // Keep the legacy 17-byte marker so the old Frame configuration migrates.
 #define EECONFIG_USER_DATA_VERSION 17
-#define VIA_FIRMWARE_VERSION 8
+#define VIA_FIRMWARE_VERSION 9
 #define DYNAMIC_KEYMAP_LAYER_COUNT 8
 // Legacy VIA data occupies the first 4 KiB; editor profiles use two verified slots.
 #define WEAR_LEVELING_LOGICAL_SIZE 16384

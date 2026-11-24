@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime
+from dataclasses import replace
 import json
 from pathlib import Path
 import queue
@@ -27,6 +28,7 @@ from profile import (
     default_profile, encode_light_preview, encode_profile, zone_config, key_config, label_for_code, layer_config,
 )
 from screen_editor import ScreenEditor
+from device_layers import DeviceLayers
 from led_layout import MAIN_COUNT, default_positions, read_positions, to_canvas, square_bounds
 from led_zones import FRAME_COUNT, MATRIX_ZONES, default_zone_map, matrix_order, matrix_positions
 from lighting import REACTIVE_DURATION_MS, TWO_COLOR_EFFECTS, led_colors, reactive_color
@@ -115,7 +117,9 @@ class Editor:
         self.light_page = tk.Frame(self.notebook, bg=BG)
         self.snippet_page = tk.Frame(self.notebook, bg=BG)
         self.detect_page = tk.Frame(self.notebook, bg=BG)
-        self.notebook.add(self.key_page, text="Tasten & Regler")
+        self.device_layers = DeviceLayers(self.notebook, self.keys)
+        self.notebook.add(self.device_layers, text="Auf dem Pad")
+        self.notebook.add(self.key_page, text="Entwurf · Tasten & Regler")
         self.layer_entries = AssignmentPanel(self.notebook, self)
         self.notebook.add(self.layer_entries, text="Layer-Zugänge")
         self.layer_manager = LayerManager(self.notebook, self)
@@ -183,6 +187,7 @@ class Editor:
                     if self.device:
                         self.device.close()
                     self.device = None
+                    self.device_layers.clear()
                     self.has_detection = False
                     self.detection = None
                     self.preview_sent = None
@@ -217,6 +222,8 @@ class Editor:
         payload = self.lighting_preview_payload()
         now = monotonic()
         send_preview = payload != self.preview_sent or (payload is not None and now >= self.preview_renew_at)
+        visible_state = self.device_layers.state
+        visible_layers = self.device_layers.layers
         check_presence = now >= self.next_usb_presence_check
         if check_presence:
             self.next_usb_presence_check = now + 1
@@ -237,12 +244,34 @@ class Editor:
             except UnsupportedCommand:
                 detection = None
             report = pad.tester_report() if read_tester else None
-            return detection, report, preview_rejected
+            layer_update = None
+            if check_presence:
+                try:
+                    state = pad.device_layer_state(detection=detection)
+                    if state is None:
+                        layer_update = (None, ())
+                    elif visible_state and state.layout_identity == visible_state.layout_identity:
+                        layer_update = (state, visible_layers)
+                    else:
+                        layer_update = (state, pad.read_device_layers(state))
+                except (ViaError, ValueError):
+                    pass
+            return detection, report, preview_rejected, layer_update
 
         def ready(result):
             if self.device is not pad:
                 return
-            detection, report, preview_rejected = result
+            detection, report, preview_rejected, layer_update = result
+            if layer_update:
+                state, layers = layer_update
+                self.device_layers.update_from_pad(state, layers, detection.mask if detection else 0)
+            elif detection is not None and self.device_layers.state:
+                if not self.device_layers.state.direct:
+                    state = replace(self.device_layers.state, active=detection.active_layer,
+                                    shown=detection.active_layer)
+                else:
+                    state = self.device_layers.state
+                self.device_layers.update_from_pad(state, self.device_layers.layers, detection.mask)
             if preview_rejected:
                 self.preview_sent = None
                 if detection is None or not detection.enabled:
@@ -280,6 +309,7 @@ class Editor:
         if not automatic or self.next_connection_check == 0:
             self.status.set("USB-Verbindung wird geprüft …")
             self.show_usb_status("USB wird geprüft")
+            self.device_layers.clear("Layer werden vom Pad gelesen")
         self.next_connection_check = monotonic() + 2
         metadata = deepcopy(self.profile)
 
@@ -327,7 +357,15 @@ class Editor:
                     snapshot = pad.snapshot()
                 except ViaError:
                     warnings.append("VIA-Sicherung konnte nicht gelesen werden")
-                return pad, caps, raw, snapshot, detection, native_tester, matrix_data, warnings
+                state, device_layers = None, ()
+                try:
+                    state = pad.device_layer_state(caps, detection)
+                    if state:
+                        device_layers = pad.read_device_layers(state, raw)
+                except (ViaError, ValueError):
+                    warnings.append("Layeranzeige konnte nicht ausgelesen werden")
+                return (pad, caps, raw, snapshot, detection, native_tester, matrix_data,
+                        warnings, state, device_layers)
             except OSError as error:
                 pad.close()
                 raise UsbConnectionError(f"Die USB-Verbindung wurde beim Auslesen unterbrochen. {error}") from error
@@ -335,7 +373,9 @@ class Editor:
                 pad.close()
                 raise
         def ready(result):
-            self.device, self.capabilities, raw, snapshot, detection, native_tester, matrix_data, warnings = result
+            (self.device, self.capabilities, raw, snapshot, detection, native_tester, matrix_data,
+             warnings, state, device_layers) = result
+            self.device_layers.update_from_pad(state, device_layers, detection.mask if detection else 0)
             self.tester_page.native = native_tester
             self.generation = self.capabilities["generation"] if self.capabilities else None
             self.on_device = raw
@@ -372,7 +412,9 @@ class Editor:
             self.layer = min(self.layer, len(self.profile["layers"]) - 1)
             version = f"Firmware {self.device.firmware}" if self.device.firmware else "Firmwareversion unbekannt"
             self.show_usb_status(f"USB verbunden · {version}", "#8ac99c")
-            message = f"USB verbunden · {version} · {len(self.profile['layers'])} eingerichtete Layer"
+            message = f"USB verbunden · {version}"
+            if state and device_layers:
+                message += f" · {state.source} · {len(device_layers)} Layer am Pad"
             if not self.capabilities:
                 message += " · Erweiterte Funktionen benötigen die neue Firmware"
             self.status.set(" · ".join((message, *warnings)))
@@ -468,6 +510,10 @@ class Editor:
         self.refresh_buttons()
 
     def refresh_selected_page(self):
+        if self.notebook.select() == str(self.device_layers):
+            self.layer_bar.pack_forget()
+        elif not self.layer_bar.winfo_manager():
+            self.layer_bar.pack(fill="x", padx=20, pady=(14, 8), before=self.notebook)
         if hasattr(self, "key_canvas"):
             self.draw_keys()
             self.screen_page.draw()
@@ -476,11 +522,8 @@ class Editor:
     def refresh_layers(self):
         for widget in self.layer_tabs.winfo_children():
             widget.destroy()
-        active = self.detection.active_layer if self.detection else None
         for index, layer in enumerate(self.profile["layers"]):
             text = layer["name"]
-            if index == active:
-                text = "● " + text
             tab = tk.Button(self.layer_tabs, text=text, relief="flat", padx=8, pady=6,
                             bg=layer["color"] if index == self.layer else KEY,
                             fg=BG if index == self.layer else layer["color"],
@@ -1360,8 +1403,6 @@ class Editor:
             self.volume_last_sent = None
         if previous == value:
             return
-        if previous is None or previous.active_layer != value.active_layer:
-            self.refresh_layers()
         slider = "Regler GP28 · Live-Wert benötigt die erweiterte Firmware"
         if value.slider_raw is not None:
             slider = f"Regler GP28 · {value.slider_percent} % · ADC {value.slider_raw}"

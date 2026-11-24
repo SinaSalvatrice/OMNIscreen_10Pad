@@ -1,12 +1,14 @@
 """USB transport and the VIA commands supported by the OMNIscreen 10Pad."""
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 from datetime import datetime, timezone
 from struct import iter_unpack, pack, unpack
 
-from profile import PROFILE_SIZE, ZONE_STRUCT, encode_lighting, colorhex, MAX_LAYERS, zone_config
+from profile import (ROOT, PROFILE_SIZE, ZONE_STRUCT, encode_lighting, colorhex, MAX_LAYERS,
+                     zone_config, decode_profile, unpack_text)
 from led_zones import MATRIX_COUNT, MATRIX_ZONES, FRAME_COUNT, validate_zone_map, default_zone_map
 
 import hid
@@ -57,6 +59,27 @@ def _acquire_usb_lease():
             "Bitte das andere Editorfenster schließen; der Entwurf bleibt erhalten."
         ) from error
     return handle
+
+
+@dataclass(frozen=True)
+class DeviceLayerState:
+    source: str
+    count: int
+    active: int | None
+    shown: int | None
+    generation: int
+    direct: bool = True
+
+    @property
+    def layout_identity(self):
+        return self.source, self.count, self.generation
+
+
+@dataclass(frozen=True)
+class DeviceLayer:
+    name: str
+    color: str
+    labels: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -258,6 +281,52 @@ class OmniPad:
                 "light_preview": bool(reply[16] & 1), "device_actions": bool(reply[16] & 2),
                 "screen_themes": bool(reply[16] & 4), "matrix_zones": bool(reply[16] & 8),
                 "simple_lighting": bool(reply[16] & 16)}
+
+    def device_layer_state(self, caps=None, detection=None):
+        if self.firmware >= 9:
+            reply = self._exchange((0x08, 0, 0x7C, 255, 0), timeout=DIAGNOSTIC_TIMEOUT_MS)
+            version, source, count, active, shown = reply[5:10]
+            if version != 1 or source > 1 or not 0 <= active < count <= MAX_LAYERS:
+                raise ViaError("Ungültige aktive Layerliste vom OmniPad.")
+            return DeviceLayerState("App-Profil" if source else "Firmware", count, active,
+                                    shown if shown < count else active,
+                                    int.from_bytes(reply[10:14], "little"))
+
+        # Version 7 exposed the active source with its profile capability.
+        # Version 8 reports only whether a profile exists.
+        if caps is None and self.firmware in (7, 8):
+            caps = self.capabilities()
+        if not caps or self.firmware not in (7, 8) or (self.firmware == 8 and caps["enabled"]):
+            return None
+        source = "App-Profil" if caps["enabled"] else "Firmware"
+        active = detection.active_layer if detection else None
+        return DeviceLayerState(source, 0, active, active, caps["generation"], direct=False)
+
+    def read_device_layers(self, state, raw_profile=None):
+        if not state.direct:
+            if state.source == "App-Profil":
+                layers = decode_profile(raw_profile or self.read_profile())["layers"]
+                return tuple(DeviceLayer(layer["name"], layer["color"],
+                                         tuple(key["label"] for key in layer["keys"]))
+                             for layer in layers)
+            spec = json.loads((ROOT / "design/layer_system.json").read_text(encoding="utf-8"))
+            return tuple(DeviceLayer(layer["name"], layer["accent"],
+                                     tuple(key["label"] for key in layer["keys"]) + ("PUSH", "K0"))
+                         for layer in spec["layers"])
+
+        layers = []
+        for index in range(state.count):
+            info = self._exchange((0x08, 0, 0x7C, index, 0), timeout=DIAGNOSTIC_TIMEOUT_MS)
+            name = unpack_text(info[5:21])
+            color = colorhex(int.from_bytes(info[21:23], "little"))
+            labels = []
+            for page in range(1, 7):
+                reply = self._exchange((0x08, 0, 0x7C, index, page), timeout=DIAGNOSTIC_TIMEOUT_MS)
+                labels += [unpack_text(reply[offset:offset + 12]) for offset in (5, 17)]
+            layers.append(DeviceLayer(name, color, tuple(labels)))
+        if self.device_layer_state().layout_identity != state.layout_identity:
+            raise ViaError("Die Layerquelle hat während des Auslesens gewechselt.")
+        return tuple(layers)
 
     def read_profile(self):
         data = bytearray()
