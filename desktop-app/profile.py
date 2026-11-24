@@ -28,8 +28,9 @@ LEGACY_PROFILE_SIZE = 8 + MAX_LAYERS * 354 + 4 + MAX_FIELDS * FIELD_STRUCT.size 
 PROFILE_SIZE = LEGACY_PROFILE_SIZE + 4 + len(SCREEN_VIEWS) * THEME_STRUCT.size
 MODES = ["Direkt", "Tap Dance", "Durchschalten"]
 EFFECTS = ["Statisch", "Abwechselnd", "Geteilt", "Farbverlauf", "Lauflicht",
-           "Atmen", "Komet", "Funkeln", "Regenbogen"]
-SLIDER_MODES = ["Aus", "Tasten pro Schritt", "Main-Helligkeit", "Frame-Helligkeit", "Beide Helligkeiten",
+           "Atmen", "Komet", "Funkeln", "Regenbogen", "Pendel", "Welle",
+           "Farbwechsel", "Doppelkomet"]
+SLIDER_MODES = ["Aus", "Tasten pro Schritt", "Matrix-Helligkeit", "Frame-Helligkeit", "Beide Helligkeiten",
                 "Windows-Lautstärke absolut (App erforderlich)"]
 BINDINGS = ["Text", "Layername", "Tastenbeschriftung", "Reglerwert", "Letzte Taste",
             "Encoder-Modus", "Erkannte Anschläge", "Sensor X", "Sensor Y", "Sensor Z"]
@@ -92,17 +93,27 @@ def zone_config(color="#ce865e"):
 
 def encode_lighting(zones):
     if len(zones) != 2:
-        raise ValueError("Es werden Main- und Frame-Beleuchtung benötigt.")
+        raise ValueError("Es werden Matrix- und Frame-Beleuchtung benötigt.")
     payload = bytearray()
-    for zone in zones:
-        for name, low, high in (("effect", 0, 8), ("brightness", 0, 64), ("speed", 0, 255),
+    for index, zone in enumerate(zones):
+        for name, low, high in (("effect", 0, len(EFFECTS) - 1), ("brightness", 0, 64), ("speed", 0, 255),
                                 ("triggers", 0, 15), ("duration", 1, 255)):
             integer(zone[name], low, high, f"Beleuchtung {name}")
         flags = int(zone["enabled"]) | (int(zone["reverse"]) << 1)
+        if index == 0 and zone.get("reactive", False):
+            flags |= 4
         payload.extend(ZONE_STRUCT.pack(zone["effect"], zone["brightness"], zone["speed"], flags,
                                         color565(valid_color(zone["color_a"])), color565(valid_color(zone["color_b"])),
                                         zone["triggers"], zone["duration"]))
     return bytes(payload)
+
+
+def encode_light_preview(lighting, colors):
+    """Compact two-group preview followed by the five reactive RGB565 colors."""
+    packed = encode_lighting(lighting)
+    base = b"".join(packed[offset:offset + ZONE_STRUCT.size - 2]
+                    for offset in (0, ZONE_STRUCT.size))
+    return base + struct.pack("<5H", *(color565(valid_color(color)) for color in colors))
 
 
 def layer_config(index):
@@ -492,10 +503,12 @@ def decode_profile(payload, metadata=None):
         layer["slider"].update(mode=mode, reverse=bool(reverse), deadband=deadband, step=step,
                                 low=low, high=high, min=minimum, max=maximum)
         offset += SLIDER_STRUCT.size
-        for zone in layer["lighting"]:
+        for zone_index, zone in enumerate(layer["lighting"]):
             effect, brightness, speed, flags, a, b, triggers, duration = ZONE_STRUCT.unpack_from(payload, offset)
             zone.update(effect=effect, brightness=brightness, speed=speed, enabled=bool(flags & 1),
                         reverse=bool(flags & 2), color_a=colorhex(a), color_b=colorhex(b), triggers=triggers, duration=duration)
+            if zone_index == 0 and flags & 4:
+                zone["reactive"] = True
             offset += ZONE_STRUCT.size
         if index < count:
             result["layers"].append(layer)

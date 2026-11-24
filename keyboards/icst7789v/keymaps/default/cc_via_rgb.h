@@ -6,7 +6,7 @@
 #include "via.h"
 #include "rgblight.h"
 #include "rgblight_drivers.h"
-#include "color.h"
+#include "cc_lighting_effects.h"
 
 #define CC_FRAME_EFFECT_SOLID       0
 #define CC_FRAME_EFFECT_ALTERNATE   1
@@ -36,7 +36,7 @@ typedef struct __attribute__((packed)) {
     uint8_t frame_speed;
     uint8_t frame_reverse;
     uint8_t zone_magic[4];
-    omp_zone_t matrix_zones[OMP_LAYERS][5]; // Keys, Slider, Encoder, K0, Display
+    omp_zone_t matrix_zones[OMP_LAYERS][OMP_MATRIX_ZONE_COUNT]; // Keys, Slider, Encoder, K0, Display
     uint8_t zone_map[CC_RGB_MAIN_LED_COUNT];
 } cc_rgb_settings_t;
 
@@ -52,20 +52,30 @@ static cc_rgb_settings_t cc_rgb = {
     0xCC, 0, 14, 255, 150, 255, 128, 2,
     1, CC_FRAME_EFFECT_SOLID, 24, 14, 255, 150, 255, 128, 0
 };
-static uint8_t cc_default_matrix_zone(uint8_t index) {
-    uint8_t row = index / 5u, col = index % 5u;
-    if ((row == 0 && col <= 3) || (row == 1 && col <= 2)) return 4; // display
-    if (col == 4 && row <= 1) return 2; // encoder
-    if ((row == 1 && col == 3) || (row == 2 && col == 4)) return 3; // K0
-    if (col == 4 && row >= 3) return 1; // slider
-    return 0; // keys
+static uint8_t cc_default_matrix_zone(uint8_t index, bool serpentine) {
+    const uint8_t row = index / 5u;
+    uint8_t col = index % 5u;
+    if (serpentine && (row & 1u)) col = 4u - col;
+    if ((row == 0 && col <= 3) || (row == 1 && col <= 2)) return OMP_ZONE_DISPLAY;
+    if (col == 4 && row <= 1) return OMP_ZONE_ENCODER;
+    if ((row == 1 && col == 3) || (row == 2 && col == 4)) return OMP_ZONE_K0;
+    if (col == 4 && row >= 3) return OMP_ZONE_SLIDER;
+    return OMP_ZONE_KEYS;
+}
+
+static void cc_fix_matrix_map(uint8_t *map) {
+    bool serpentine = true;
+    for (uint8_t i = 0; i < CC_RGB_MAIN_LED_COUNT; ++i)
+        serpentine &= map[i] == cc_default_matrix_zone(i, true);
+    for (uint8_t i = 0; i < CC_RGB_MAIN_LED_COUNT; ++i)
+        map[i] = cc_default_matrix_zone(i, serpentine);
 }
 static void cc_matrix_zones_reset(void) {
     memcpy(cc_rgb.zone_magic, "MZ01", 4);
     for (uint8_t i = 0; i < CC_RGB_MAIN_LED_COUNT; ++i)
-        cc_rgb.zone_map[i] = cc_default_matrix_zone(i);
+        cc_rgb.zone_map[i] = cc_default_matrix_zone(i, false);
     for (uint8_t layer = 0; layer < OMP_LAYERS; ++layer) {
-        for (uint8_t zone = 0; zone < 5; ++zone) {
+        for (uint8_t zone = 0; zone < OMP_MATRIX_ZONE_COUNT; ++zone) {
             omp_zone_t *z = &cc_rgb.matrix_zones[layer][zone];
             z->effect = 0; z->brightness = 24; z->speed = 128; z->flags = 1;
             z->color_a = 0xCC2B; z->color_b = 0x74F7;
@@ -75,10 +85,8 @@ static void cc_matrix_zones_reset(void) {
 }
 static bool cc_matrix_zones_valid(void) {
     if (memcmp(cc_rgb.zone_magic, "MZ01", 4)) return false;
-    for (uint8_t i = 0; i < CC_RGB_MAIN_LED_COUNT; ++i)
-        if (cc_rgb.zone_map[i] >= 5) return false;
     for (uint8_t layer = 0; layer < OMP_LAYERS; ++layer)
-        for (uint8_t zone = 0; zone < 5; ++zone)
+        for (uint8_t zone = 0; zone < OMP_MATRIX_ZONE_COUNT; ++zone)
             if (!omp_zone_valid(&cc_rgb.matrix_zones[layer][zone])) return false;
     return true;
 }
@@ -118,6 +126,7 @@ static void cc_rgb_load(void) {
     }
     // Original 17 Frame/Main bytes are unchanged on migration.
     if (!cc_matrix_zones_valid()) cc_matrix_zones_reset();
+    cc_fix_matrix_map(cc_rgb.zone_map);
     if (cc_rgb.frame_brightness > RGBLIGHT_LIMIT_VAL) {
         cc_rgb.frame_brightness = RGBLIGHT_LIMIT_VAL;
     }
@@ -224,10 +233,6 @@ static void cc_rgb_frame_paint(void) {
     cc_frame_dirty = false;
 }
 
-static uint16_t cc_frame_interval(uint8_t speed) {
-    return (uint16_t)(25u + ((uint16_t)(255u - speed) * 4u) / 5u);
-}
-
 static void cc_rgb_tick(void) {
     const uint16_t now = timer_read();
     const bool main_enabled = rgblight_is_enabled();
@@ -237,7 +242,7 @@ static void cc_rgb_tick(void) {
         cc_main_dirty = true;
     }
     if (cc_rgb.mode == 4 && main_enabled &&
-        timer_elapsed(cc_main_frame_time) >= cc_frame_interval(cc_rgb.speed)) {
+        timer_elapsed(cc_main_frame_time) >= cc_light_interval(cc_rgb.speed)) {
         cc_main_frame_time = now;
         ++cc_main_phase;
         cc_main_dirty = true;
@@ -253,7 +258,7 @@ static void cc_rgb_tick(void) {
          cc_rgb.frame_effect == CC_FRAME_EFFECT_RAINBOW ||
          cc_rgb.frame_effect == CC_FRAME_EFFECT_BREATHE);
 
-    if (animated && timer_elapsed(cc_frame_frame_time) >= cc_frame_interval(cc_rgb.frame_speed)) {
+    if (animated && timer_elapsed(cc_frame_frame_time) >= cc_light_interval(cc_rgb.frame_speed)) {
         cc_frame_frame_time = now;
         cc_frame_phase += (cc_rgb.frame_effect == CC_FRAME_EFFECT_BREATHE ? 2u : 1u);
         cc_frame_dirty = true;
@@ -267,7 +272,8 @@ static bool cc_tester_preview_leds(void) {
         ? cc_tester_output : 0;
     if (output < 2) {
         if (previous) {
-            rgblight_sethsv_noeeprom(rgblight_get_hue(), rgblight_get_sat(), rgblight_get_val());
+            if (!cc_visual_profile_available)
+                rgblight_sethsv_noeeprom(rgblight_get_hue(), rgblight_get_sat(), rgblight_get_val());
             cc_main_dirty = cc_frame_dirty = true;
             previous = 0;
         }
@@ -286,6 +292,21 @@ static bool cc_tester_preview_leds(void) {
     return true;
 }
 
+// Stage edits before making them visible to the renderer and EEPROM.
+static omp_zone_t cc_pending_matrix_zones[OMP_LAYERS][OMP_MATRIX_ZONE_COUNT];
+static uint8_t cc_pending_matrix_map[CC_RGB_MAIN_LED_COUNT];
+static uint32_t cc_matrix_transfer_at;
+static bool cc_matrix_transfer;
+
+static void cc_stage_matrix_zones(void) {
+    if (!cc_matrix_transfer || timer_elapsed32(cc_matrix_transfer_at) >= 15000u) {
+        memcpy(cc_pending_matrix_zones, cc_rgb.matrix_zones, sizeof(cc_pending_matrix_zones));
+        memcpy(cc_pending_matrix_map, cc_rgb.zone_map, sizeof(cc_pending_matrix_map));
+    }
+    cc_matrix_transfer_at = timer_read32();
+    cc_matrix_transfer = true;
+}
+
 // VIA channel 0 preserves the previous four custom main-palette IDs (1..4).
 // New Frame values use 5..11, so existing saved VIA definitions remain valid.
 void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
@@ -294,34 +315,49 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
         (data[0] == id_custom_get_value || data[0] == id_custom_set_value)) {
         bool get = data[0] == id_custom_get_value;
         if (data[2] == 0x7A) {
-            if (data[3] < OMP_LAYERS && data[4] < 5) {
-                omp_zone_t *z = &cc_rgb.matrix_zones[data[3]][data[4]];
-                if (get) { memcpy(&data[5], z, sizeof(*z)); return; }
+            if (data[3] < OMP_LAYERS && data[4] < OMP_MATRIX_ZONE_COUNT) {
+                const omp_zone_t *zone = &cc_rgb.matrix_zones[data[3]][data[4]];
+                if (get) { memcpy(&data[5], zone, sizeof(*zone)); return; }
                 omp_zone_t candidate;
                 memcpy(&candidate, &data[5], sizeof(candidate));
-                if (omp_zone_valid(&candidate)) { *z = candidate; return; }
+                if (omp_zone_valid(&candidate)) {
+                    cc_stage_matrix_zones();
+                    cc_pending_matrix_zones[data[3]][data[4]] = candidate;
+                    return;
+                }
             } else if (data[3] == 255 && data[4] < 2) {
-                uint8_t *map = cc_rgb.zone_map + data[4] * 15u;
-                if (get) { memcpy(&data[5], map, 15); return; }
+                const uint8_t offset = data[4] * 15u;
+                if (get) { memcpy(&data[5], cc_rgb.zone_map + offset, 15); return; }
                 bool valid = true;
-                for (uint8_t i = 0; i < 15; ++i) if (data[5 + i] >= 5) valid = false;
-                if (valid) { memcpy(map, &data[5], 15); return; }
+                for (uint8_t i = 0; i < 15; ++i)
+                    if (data[5 + i] >= OMP_MATRIX_ZONE_COUNT) valid = false;
+                if (valid) {
+                    cc_stage_matrix_zones();
+                    memcpy(cc_pending_matrix_map + offset, &data[5], 15);
+                    return;
+                }
             }
+            if (!get) cc_matrix_transfer = false;
             data[0] = id_unhandled;
             return;
         }
         if (data[2] == 0x7B) {
             if (get) {
                 memcpy(&data[3], "MZ01", 4);
-                data[7] = 5;
+                data[7] = OMP_MATRIX_ZONE_COUNT;
                 data[8] = CC_RGB_MAIN_LED_COUNT;
                 data[9] = CC_RGB_FRAME_LED_COUNT;
                 return;
             }
-            if (data[3] == 1 && cc_matrix_zones_valid()) {
+            if (data[3] == 1 && cc_matrix_transfer && timer_elapsed32(cc_matrix_transfer_at) < 15000u) {
+                cc_matrix_transfer = false;
+                cc_fix_matrix_map(cc_pending_matrix_map);
+                memcpy(cc_rgb.matrix_zones, cc_pending_matrix_zones, sizeof(cc_rgb.matrix_zones));
+                memcpy(cc_rgb.zone_map, cc_pending_matrix_map, sizeof(cc_rgb.zone_map));
                 eeconfig_update_user_datablock(&cc_rgb, 0, sizeof(cc_rgb));
                 return;
             }
+            cc_matrix_transfer = false;
             data[0] = id_unhandled;
             return;
         }

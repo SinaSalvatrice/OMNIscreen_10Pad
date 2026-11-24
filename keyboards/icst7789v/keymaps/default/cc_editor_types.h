@@ -12,6 +12,14 @@
 #define OMP_OLD_PROFILE_SIZE 6084u
 #define OMP_SLOT_SIZE 6144
 #define OMP_STORAGE_START 4096
+#define OMP_EFFECT_COUNT 13u
+#define OMP_LIGHT_REACTIVE 4u
+#define OMP_REACTIVE_MS 450u
+
+enum {
+    OMP_ZONE_KEYS, OMP_ZONE_SLIDER, OMP_ZONE_ENCODER, OMP_ZONE_K0, OMP_ZONE_DISPLAY,
+    OMP_MATRIX_ZONE_COUNT
+};
 
 enum {
     OMP_ACTION_LAYERS = 0x7E40, OMP_ACTION_CUSTOM_SCREEN, OMP_ACTION_MATRIX,
@@ -103,12 +111,13 @@ static uint32_t omp_expected_checksum;
 
 #define OMP_LED_PREVIEW_MS 1800u
 static omp_zone_t omp_preview_zones[2];
+static uint16_t omp_preview_tints[OMP_MATRIX_ZONE_COUNT];
 static bool omp_preview_active;
 static uint16_t omp_preview_at;
 
 static bool omp_zone_valid(const omp_zone_t *zone) {
-    return zone->effect <= 8 && zone->brightness <= RGBLIGHT_LIMIT_VAL &&
-           zone->flags <= 3 && zone->triggers <= 15 && zone->duration;
+    return zone->effect < OMP_EFFECT_COUNT && zone->brightness <= RGBLIGHT_LIMIT_VAL &&
+           zone->flags <= 7 && zone->triggers <= 15 && zone->duration;
 }
 
 static uint32_t omp_checksum(const void *data, uint16_t size) {

@@ -5,8 +5,9 @@ from copy import deepcopy
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from led_zones import (default_zone_map, validate_zone_map, MATRIX_COUNT, FRAME_COUNT,
-                       LED_COUNT, matrix_positions, ZONE_NAMES)
-from profile import default_profile, encode_profile, decode_profile, encode_lighting, zone_config
+                       LED_COUNT, matrix_positions, matrix_order, ZONE_NAMES)
+from profile import EFFECTS, default_profile, encode_profile, decode_profile, encode_lighting, zone_config
+from lighting import animation_interval, led_colors, reactive_color, REACTIVE_DURATION_MS
 
 
 class MatrixZoneTests(unittest.TestCase):
@@ -30,6 +31,38 @@ class MatrixZoneTests(unittest.TestCase):
             coords = matrix_positions(order)
             self.assertEqual(len(coords), 30)
             self.assertEqual(len({tuple(p) for p in coords}), 30)
+
+    def test_zone_layout_preserves_standard_wiring_order(self):
+        serpentine = default_zone_map("serpentine")
+        self.assertEqual(matrix_order(serpentine), "serpentine")
+        self.assertEqual(serpentine[5:10], list(reversed(default_zone_map()[5:10])))
+        serpentine[0] = 1
+        self.assertEqual(matrix_order(serpentine), "rows")
+
+    def test_animated_layer_roundtrips_without_changing_profile_size(self):
+        p = default_profile()
+        matrix, frame = p["layers"][0]["lighting"]
+        matrix.update(effect=12, speed=0, enabled=False, reactive=True)
+        frame.update(effect=9, speed=10)
+        raw = encode_profile(p)
+        self.assertEqual(len(raw), 6124)
+        matrix, frame = decode_profile(raw)["layers"][0]["lighting"]
+        self.assertEqual((matrix["effect"], matrix["speed"], matrix["enabled"], matrix["reactive"]),
+                         (12, 0, False, True))
+        self.assertEqual((frame["effect"], frame["speed"]), (9, 10))
+
+    def test_slow_frame_and_reactive_preview(self):
+        self.assertEqual(animation_interval(0) * FRAME_COUNT, 22360)
+        self.assertEqual(animation_interval(255), 20)
+        zone = zone_config()
+        for effect in range(len(EFFECTS)):
+            zone.update(effect=effect, speed=0)
+            self.assertEqual(len(led_colors(zone, FRAME_COUNT, 65000)), FRAME_COUNT)
+        zone["enabled"] = False
+        base = led_colors(zone, MATRIX_COUNT, 0)[0]
+        self.assertEqual(base, (0, 0, 0))
+        self.assertEqual(reactive_color(base, "#ff0000", 0), (127, 0, 0))
+        self.assertEqual(reactive_color(base, "#ff0000", REACTIVE_DURATION_MS), base)
 
     def test_legacy_profile_still_wire_compatible(self):
         p = default_profile()

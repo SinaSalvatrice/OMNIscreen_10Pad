@@ -114,7 +114,7 @@ static void cc_user_layer_change(uint8_t from, uint8_t to) {
     // OmniPad profile may be SETTINGS. Never enter RGB preview implicitly.
     if (!omp_enabled) {
         if (from == CC_RGB_LAYER && to != CC_RGB_LAYER) cc_rgb_preview_cancel();
-        if (from != CC_RGB_LAYER && to == CC_RGB_LAYER) cc_rgb_preview_begin();
+        if (from != CC_RGB_LAYER && to == CC_RGB_LAYER && !cc_visual_profile_available) cc_rgb_preview_begin();
         if (from == CC_MACRO_LAYER && to != CC_MACRO_LAYER) cc_macro_recording = false;
     }
     if (cc_nav_alt_down) {
@@ -138,6 +138,7 @@ static void cc_user_layer_change(uint8_t from, uint8_t to) {
 }
 
 static void cc_rgb_adjust_effect(bool clockwise) {
+    if (!cc_rgb_master_enabled) return;
     if (!cc_rgb_preview_active) cc_rgb_preview_begin();
     if (cc_rgb_zone == 0) {
         cc_rgb.mode = 0; // Use QMK effects rather than the two-color renderer.
@@ -152,6 +153,7 @@ static void cc_rgb_adjust_effect(bool clockwise) {
     cc_dirty = true;
 }
 static void cc_rgb_key(uint8_t index) {
+    if (!cc_rgb_master_enabled && index != 9) return;
     if (!cc_rgb_preview_active) cc_rgb_preview_begin();
     switch (index) {
         case 0:
@@ -300,16 +302,11 @@ static void cc_nav_alt_tick(void) {
 }
 static bool cc_user_encoder_turn(bool clockwise) {
     cc_ui_activity();
-    if (cc_internal_mode) {
-        cc_internal_selected = (cc_internal_selected + (clockwise ? 1 : 9)) % 10;
-        cc_dirty = true;
-        return true;
-    }
     // Standalone layer numbers (e.g. 6=RGB) are not the user's OMP
     // profile layout (e.g. 6=SETTINGS). Never steal its encoder events.
     if (omp_enabled) return false;
     if (cc_active == CC_RGB_LAYER) {
-        cc_rgb_adjust_effect(clockwise);
+        if (!cc_visual_profile_available) cc_rgb_adjust_effect(clockwise);
         return true;
     }
     if (cc_active == CC_NAV_LAYER) {
@@ -367,7 +364,8 @@ static bool cc_special_key(uint8_t index, bool pressed) {
     // and MACROS/TEXT lose their user-configured actions.
     if (omp_enabled) return false;
     if (cc_active == CC_RGB_LAYER) {
-        if (pressed) cc_rgb_key(index);
+        if (pressed && !cc_visual_profile_available) cc_rgb_key(index);
+        else if (pressed && index == 9) cc_activate_layer(cc_previous);
         return true;
     }
     // Reserved layer-specific modifier exceptions work regardless of app state.
