@@ -7,10 +7,13 @@ LED_COUNT = MATRIX_COUNT + FRAME_COUNT
 MATRIX_ZONES = ("Tasten", "Regler", "Encoder", "K0", "Display")
 ZONE_NAMES = MATRIX_ZONES + ("Frame",)
 
-def default_zone_map():
+def default_zone_map(order="rows"):
     result = []
     for row in range(MATRIX_ROWS):
-        for col in range(MATRIX_COLS):
+        columns = range(MATRIX_COLS)
+        if order == "serpentine" and row % 2:
+            columns = reversed(columns)
+        for col in columns:
             if (row == 0 and col <= 3) or (row == 1 and col <= 2):
                 zone = 4  # Display
             elif col == 4 and row <= 1:
@@ -39,3 +42,8 @@ def matrix_positions(order="rows"):
             col = MATRIX_COLS - 1 - col
         points.append([round(.18 + col * .16, 5), round(.20 + row * .125, 5)])
     return points
+
+
+def matrix_order(mapping):
+    """Keep a previously selected serpentine wiring without custom zone edits."""
+    return "serpentine" if mapping == default_zone_map("serpentine") else "rows"

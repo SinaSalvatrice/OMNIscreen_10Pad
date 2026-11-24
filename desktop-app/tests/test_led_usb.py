@@ -6,7 +6,7 @@ from struct import unpack_from
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from profile import (default_profile, zone_config, ZONE_STRUCT, encode_lighting,
-                     MAX_LAYERS, colorhex)
+                     MAX_LAYERS, colorhex, encode_light_preview)
 from led_zones import default_zone_map, MATRIX_ZONES
 from via import OmniPad
 
@@ -56,6 +56,24 @@ class UsbZoneTests(unittest.TestCase):
         editor = object.__new__(OmniPad)
         editor._exchange = pad._exchange
         return editor, pad
+
+    def test_preview_contains_both_base_effects_and_five_reactive_colors(self):
+        editor = object.__new__(OmniPad)
+        sent = []
+        editor._exchange = sent.append
+        lighting = [zone_config(), zone_config()]
+        lighting[0].update(effect=12, reactive=True)
+        lighting[1]["effect"] = 9
+        colors = ["#ff0000", "#00ff00", "#0000ff", "#000000", "#ffffff"]
+        editor.preview_lighting(encode_light_preview(lighting, colors))
+        editor.preview_lighting(None)
+        preview, stop = sent
+        self.assertEqual(preview[:4], bytes((0x07, 0, 0x79, 2)))
+        self.assertEqual(len(preview), 30)
+        self.assertEqual((preview[4], preview[7], preview[12]), (12, 5, 9))
+        self.assertEqual(unpack_from("<5H", preview, 20),
+                         (0xf800, 0x07e0, 0x001f, 0x0000, 0xffff))
+        self.assertEqual(stop, bytes((0x07, 0, 0x79, 0)))
 
     def test_read_matrix_zones_all_12_layers_and_30_pixels(self):
         editor, pad = self._editor_pad()

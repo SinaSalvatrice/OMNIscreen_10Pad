@@ -15,15 +15,12 @@ static uint8_t omp_cycles[OMP_LAYERS][OMP_KEYS];
 static uint16_t omp_down_mask;
 static uint8_t omp_last_key = 255;
 static uint8_t omp_last_gesture;
-static uint8_t omp_trigger;
-static int8_t omp_encoder_direction;
-static uint16_t omp_trigger_at;
-static uint8_t omp_encoder_position;
 static uint8_t omp_last_layer = 255;
 static int16_t omp_slider_reference = -1;
-static bool omp_qmk_lighting_override;
-static uint8_t omp_qmk_effect;
+static bool omp_matrix_override;
+static omp_zone_t omp_runtime_matrix;
 static bool omp_native_lighting(uint16_t code, bool pressed);
+static void omp_react(uint8_t zone);
 static bool omp_device_action(uint16_t code, bool pressed);
 static uint8_t omp_brightness_override[2] = {255, 255};
 static uint16_t omp_macro_position, omp_macro_end, omp_macro_wait;
@@ -46,11 +43,6 @@ static bool omp_display_waits_for_input(void) {
         if (state->key.mode == 1 && !state->holding && (state->down || state->taps)) return true;
     }
     return false;
-}
-
-static void omp_event(uint8_t trigger) {
-    omp_trigger = trigger;
-    omp_trigger_at = timer_read();
 }
 
 static void omp_emit(uint16_t code, bool pressed) {
@@ -205,7 +197,6 @@ static bool omp_key_event(uint8_t index, bool pressed) {
         omp_down_mask |= 1u << index;
         omp_last_key = index;
         omp_last_gesture = 0;
-        omp_event(1);
         if (!cc_home_view) cc_dirty = true;
         if (state->key.mode == 0) {
             uint16_t code = state->key.codes[0];
@@ -318,12 +309,12 @@ static void omp_actions_tick(void) {
 }
 
 static void omp_layer_changed(void) {
-    if (!omp_enabled || omp_last_layer == cc_active) return;
+    if (omp_last_layer == cc_active) return;
     omp_last_layer = cc_active;
     omp_slider_reference = -1;
-    omp_qmk_lighting_override = false;
+    omp_matrix_override = false;
     omp_brightness_override[0] = omp_brightness_override[1] = 255;
-    omp_event(4);
+    omp_react(OMP_ZONE_DISPLAY);
     // Pending multi-taps keep the actions captured on their original layer.
 }
 
@@ -366,18 +357,15 @@ static void omp_slider_update(int16_t value) {
         if (slider->mode != 3) omp_brightness_override[0] = brightness;
         if (slider->mode != 2) omp_brightness_override[1] = brightness;
         omp_slider_reference = value;
-        omp_event(8);
     } else if (slider->mode == 5) {
         // Fallback must work with no PC app: emit relative volume events.
         // The editor can still read telemetry, but must not apply volume twice.
         if (delta >= slider->step || delta <= -(int16_t)slider->step) {
             omp_tap(delta > 0 ? KC_VOLU : KC_VOLD);
             omp_slider_reference += delta > 0 ? slider->step : -(int16_t)slider->step;
-            omp_event(8);
-        }
+            }
     } else if (slider->mode == 1 && (delta >= slider->step || delta <= -(int16_t)slider->step)) {
         omp_tap(delta > 0 ? slider->high : slider->low);
         omp_slider_reference += delta > 0 ? slider->step : -(int16_t)slider->step;
-        omp_event(8);
     }
 }

@@ -23,16 +23,14 @@ static bool cc_on_menu_screen(void) {
            cc_matrix_test_view || cc_menu_view || cc_help_view || cc_color_view;
 }
 static uint8_t cc_internal_count(void) {
-    return cc_internal_mode == 2 ? 5 : cc_internal_mode == 4 ? 3 : 10;
+    return cc_internal_mode == 2 ? 5 : cc_internal_mode == 4 ? 3 : 9;
 }
 static void cc_internal_step(int8_t delta) {
     if (!cc_internal_mode || cc_internal_mode == 3) return;
     const int8_t count = (int8_t)cc_internal_count();
-    if ((delta == 5 || delta == -5) && count != 10) return;
     int8_t next = (int8_t)cc_internal_selected + delta;
     if (delta == 5 || delta == -5) {
-        if (next < 0) next += count;
-        if (next >= count) next -= count;
+        if (cc_internal_mode != 1 || next < 0 || next >= count) return;
     } else {
         if (next < 0) next = count - 1;
         if (next >= count) next = 0;
@@ -71,9 +69,9 @@ static void cc_internal_press(uint8_t index) {
         cc_internal_confirm = 255;
         // K9 confirms the highlighted dangerous action, K5 cancels.
         if (index != pending) { cc_dirty = true; return; }
-        if (pending == 6) { soft_reset_keyboard(); return; }
-        if (pending == 7) { reset_keyboard(); return; }
-        if (pending == 8) { cc_clear_eeprom(); return; }
+        if (pending == 5) { soft_reset_keyboard(); return; }
+        if (pending == 6) { reset_keyboard(); return; }
+        if (pending == 7) { cc_clear_eeprom(); return; }
         return;
     }
     cc_internal_selected = index;
@@ -98,26 +96,15 @@ static void cc_internal_press(uint8_t index) {
         switch (index) {
             case 0:
                 cc_rgb_master_enabled = !cc_rgb_master_enabled;
-                rgblight_toggle_noeeprom();
-                cc_rgb.frame_enabled = cc_rgb_master_enabled;
-                cc_main_dirty = cc_frame_dirty = true;
+                omp_light_reaction_mask = 0;
                 cc_ui_config_save();
                 break;
-            case 1: {
-                const uint8_t current = rgblight_get_val();
-                const uint8_t next = current >= RGBLIGHT_LIMIT_VAL ? 8 :
-                                     current + 8 > RGBLIGHT_LIMIT_VAL ? RGBLIGHT_LIMIT_VAL : current + 8;
-                rgblight_sethsv_noeeprom(rgblight_get_hue(), rgblight_get_sat(), next);
-                cc_rgb.frame_brightness = next;
-                cc_main_dirty = cc_frame_dirty = true;
-                break;
-            }
-            case 2: cc_internal_mode = 2; cc_internal_selected = 0; break;
-            case 3: cc_internal_mode = 4; cc_internal_selected = cc_use_app_profile ? 1 : 0; break;
-            case 4: cc_internal_mode = 0; cc_matrix_test_enter(); break;
-            case 5: cc_internal_mode = 3; break;
-            case 6: case 7: case 8: cc_internal_confirm = index; break;
-            case 9: cc_menu_back(); break;
+            case 1: cc_internal_mode = 2; cc_internal_selected = 0; break;
+            case 2: cc_internal_mode = 4; cc_internal_selected = cc_use_app_profile ? 1 : 0; break;
+            case 3: cc_internal_mode = 0; cc_matrix_test_enter(); break;
+            case 4: cc_internal_mode = 3; break;
+            case 5: case 6: case 7: cc_internal_confirm = index; break;
+            case 8: cc_menu_back(); break;
         }
     }
     cc_dirty = true;
@@ -169,7 +156,7 @@ static bool omp_device_action(uint16_t code, bool pressed) {
             break;
         case OMP_ACTION_EEPROM:
             cc_internal_mode = 1;
-            cc_internal_selected = 8; // Confirm in Settings; never erase immediately.
+            cc_internal_selected = 7; // Confirm in Settings; never erase immediately.
             cc_dirty = true;
             break;
         default:
@@ -286,11 +273,6 @@ void keyboard_post_init_user(void) {
     omp_load();
     cc_visual_profile_available = omp_enabled;
     cc_ui_config_load();
-    if (!cc_rgb_master_enabled) {
-        rgblight_disable_noeeprom();
-        cc_rgb.frame_enabled = false;
-        cc_main_dirty = cc_frame_dirty = true;
-    }
     if (!cc_use_app_profile) omp_enabled = false;
     cc_active = omp_enabled ? omp_profile.default_layer : 1;
     cc_preview = cc_active;
@@ -440,8 +422,14 @@ void matrix_scan_user(void) {
     static bool combo_latched;
     const bool k0_changed = cc_button_update(&cc_k0, K0_SW);
     const bool encoder_changed = cc_button_update(&cc_encoder_button, ENCODER_SW);
-    if (k0_changed) cc_tester_record(CC_SIGNAL_K0, 0, !cc_k0.stable);
-    if (encoder_changed) cc_tester_record(CC_SIGNAL_ENCODER_PUSH, 0, !cc_encoder_button.stable);
+    if (k0_changed) {
+        cc_tester_record(CC_SIGNAL_K0, 0, !cc_k0.stable);
+        if (!cc_k0.stable) omp_react(OMP_ZONE_K0);
+    }
+    if (encoder_changed) {
+        cc_tester_record(CC_SIGNAL_ENCODER_PUSH, 0, !cc_encoder_button.stable);
+        if (!cc_encoder_button.stable) omp_react(OMP_ZONE_ENCODER);
+    }
     if (!cc_k0.stable && !cc_encoder_button.stable) {
         if (!combo_latched) {
             combo_latched = true;
@@ -495,12 +483,8 @@ static bool cc_encoder_rotate(bool clockwise) {
         return false; // Never emit encoder host actions during diagnosis.
     }
     // Menus own the encoder exclusively, even with an app profile loaded.
-    if (!cc_internal_mode && cc_screen_selection != CC_SCREEN_LAYERS &&
-        !cc_menu_view && omp_enabled) {
-        omp_encoder_direction = clockwise ? 1 : -1;
-        omp_encoder_position = (omp_encoder_position + (clockwise ? 1 : 42)) % 43;
-        omp_event(2);
-    }
+    if (!cc_internal_mode && cc_screen_selection != CC_SCREEN_LAYERS && !cc_menu_view)
+        omp_react(OMP_ZONE_ENCODER);
     if (cc_internal_mode) {
         cc_internal_step(clockwise ? 1 : -1);
     } else if (cc_menu_view) {
@@ -546,6 +530,7 @@ bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
         for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
             if (cc_matrix_row[i] != row || cc_matrix_col[i] != col) continue;
             if (cc_ui_menu_key(i, record->event.pressed)) return false;
+            if (record->event.pressed) omp_react(OMP_ZONE_KEYS);
             cc_last_key = record->event.pressed ? i : 255;
             if (!cc_home_view) cc_dirty = true;
             if (cc_special_key(i, record->event.pressed)) return false;
@@ -638,36 +623,30 @@ void housekeeping_task_user(void) {
 #endif
     }
 #ifdef RGBLIGHT_ENABLE
-    static bool preview_was_active;
-    static uint8_t preview_qmk_mode;
-    if (omp_preview_active && (cc_matrix_test_view || timer_elapsed(omp_preview_at) >= OMP_LED_PREVIEW_MS)) {
+    static bool qmk_suspended;
+    static bool master_was_on = true;
+    if (omp_preview_active && (cc_matrix_test_view || timer_elapsed(omp_preview_at) >= OMP_LED_PREVIEW_MS))
         omp_preview_active = false;
-    }
-    if (omp_preview_active && !preview_was_active) {
-        preview_qmk_mode = rgblight_get_mode();
-        if (preview_qmk_mode > RGBLIGHT_MODE_STATIC_LIGHT) {
-            rgblight_mode_noeeprom(RGBLIGHT_MODE_STATIC_LIGHT);
-        }
-    }
-    if (preview_was_active && !omp_preview_active && !omp_enabled) {
-        rgblight_driver.set_color_all(0, 0, 0);
-        if (preview_qmk_mode > RGBLIGHT_MODE_STATIC_LIGHT) rgblight_mode_noeeprom(preview_qmk_mode);
+    const bool own_leds = omp_preview_active || cc_visual_profile_available;
+    if (own_leds || !cc_rgb_master_enabled) {
+        rgblight_timer_disable();
+        qmk_suspended = true;
+    } else if (qmk_suspended) {
+        rgblight_timer_enable();
         rgblight_sethsv_noeeprom(rgblight_get_hue(), rgblight_get_sat(), rgblight_get_val());
         cc_main_dirty = cc_frame_dirty = true;
+        qmk_suspended = false;
     }
-    static bool cc_master_was_on = true;
     if (!cc_rgb_master_enabled) {
-        if (cc_master_was_on) rgblight_driver.set_color_all(0, 0, 0);
-        cc_master_was_on = false;
-    } else {
-        if (!cc_master_was_on) cc_main_dirty = cc_frame_dirty = true;
-        cc_master_was_on = true;
-        if (!cc_tester_preview_leds()) {
-            if (omp_preview_active || omp_enabled) omp_lighting_tick(omp_preview_active);
-            else cc_rgb_tick();
+        if (master_was_on) {
+            rgblight_driver.set_color_all(0, 0, 0);
+            rgblight_driver.flush();
         }
+    } else if (!cc_tester_preview_leds()) {
+        if (own_leds) omp_lighting_tick(omp_preview_active);
+        else cc_rgb_tick();
     }
-    preview_was_active = omp_preview_active;
+    master_was_on = cc_rgb_master_enabled;
 #endif
     omp_actions_tick();
     if (cc_matrix_test_view && omp_enabled && omp_down_mask) omp_release_all();
@@ -679,6 +658,7 @@ void housekeeping_task_user(void) {
             cc_slider_raw = cc_slider_valid ? omp_slider_filter_adc(sample, cc_slider_raw) : (uint16_t)sample;
             const uint16_t value = omp_slider_value(cc_slider_raw);
             cc_slider_pct = ((uint32_t)value * 100u + 511u) / 1023u;
+            if (cc_slider_valid && cc_slider_pct != previous_pct) omp_react(OMP_ZONE_SLIDER);
             cc_slider_valid = true;
             if (cc_matrix_test_view || cc_custom_screen_selected()) {
                 if (cc_slider_pct != previous_pct) cc_dirty = true;

@@ -13,11 +13,25 @@ static bool omp_command(uint8_t *data, uint8_t length) {
             omp_preview_active = false;
             return true;
         }
-        if (data[3] == 1 && !cc_matrix_test_view) {
+        if ((data[3] == 1 || data[3] == 2) && !cc_matrix_test_view) {
             omp_zone_t zones[2];
-            memcpy(zones, &data[4], sizeof(zones));
+            const bool extended = data[3] == 2;
+            if (extended) {
+                const uint8_t size = sizeof(omp_zone_t) - 2u;
+                for (uint8_t i = 0; i < 2; ++i) {
+                    memcpy(&zones[i], &data[4 + i * size], size);
+                    zones[i].triggers = 0;
+                    zones[i].duration = 1;
+                }
+            } else {
+                memcpy(zones, &data[4], sizeof(zones));
+            }
             if (omp_zone_valid(&zones[0]) && omp_zone_valid(&zones[1])) {
                 memcpy(omp_preview_zones, zones, sizeof(zones));
+                if (extended)
+                    memcpy(omp_preview_tints, &data[4 + sizeof(zones) - 4u], sizeof(omp_preview_tints));
+                else
+                    omp_preview_zones[0].flags &= ~OMP_LIGHT_REACTIVE;
                 omp_preview_at = timer_read();
                 omp_preview_active = true;
                 return true;
@@ -50,16 +64,16 @@ static bool omp_command(uint8_t *data, uint8_t length) {
     }
     if (id == 0x71 && get) {
         memcpy(&data[3], "OMP2", 4);
-        data[7] = omp_enabled;
+        data[7] = cc_visual_profile_available;
         data[8] = OMP_LAYERS;
         data[9] = sizeof(omp_profile) & 255u;
         data[10] = sizeof(omp_profile) >> 8;
         memcpy(&data[11], &omp_generation, 4);
         data[15] = CC_PCF8575_MATRIX;
-        data[16] = 15; // LED preview, device actions, screens, 30-pixel matrix zones.
+        data[16] = 31; // LED preview, device actions, screens, matrix zones, simplified lighting.
         return true;
     }
-    if (id == 0x72 && get && omp_enabled) {
+    if (id == 0x72 && get && cc_visual_profile_available) {
         uint16_t offset = data[3] | ((uint16_t)data[4] << 8);
         uint8_t count = data[5];
         if (count <= 25 && (uint32_t)offset + count <= sizeof(omp_profile)) {
@@ -100,6 +114,7 @@ static bool omp_command(uint8_t *data, uint8_t length) {
                 omp_screen_invalid = true;
                 cc_visual_profile_available = true;
                 if (!cc_use_app_profile) omp_enabled = false;
+                omp_last_layer = 255; // A replacement profile also resets temporary lighting controls.
                 cc_activate_layer(omp_enabled ? omp_profile.default_layer : 1);
                 omp_layer_changed();
                 cc_dirty = true;

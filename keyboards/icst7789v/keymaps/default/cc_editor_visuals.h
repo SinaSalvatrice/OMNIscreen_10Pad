@@ -3,127 +3,138 @@
 #include "cc_editor_icons.h"
 #include "rgblight_drivers.h"
 #include "color.h"
-#include "process_underglow.h"
 
-static uint16_t omp_light_timer;
-static uint8_t omp_phase;
+// The active glow is composited on top of Matrix. Each hardware zone has
+// its own timestamp so turning the encoder cannot cancel a key reaction.
+static uint32_t omp_light_timer;
+static uint32_t omp_light_reaction_at[OMP_MATRIX_ZONE_COUNT];
+static uint8_t omp_light_reaction_mask;
+
+static void omp_react(uint8_t zone) {
+    if (!cc_rgb_master_enabled || cc_matrix_test_view ||
+        !(omp_preview_active || cc_visual_profile_available)) return;
+    omp_light_reaction_at[zone] = timer_read32();
+    omp_light_reaction_mask |= 1u << zone;
+}
+
+static uint8_t omp_step_value(uint8_t value, int8_t step, uint8_t maximum) {
+    int16_t next = (int16_t)value + step;
+    return next < 0 ? 0 : next > maximum ? maximum : next;
+}
+
+static hsv_t omp_hsv(rgb_t color) {
+    const uint8_t max = MAX(color.r, MAX(color.g, color.b));
+    const uint8_t min = MIN(color.r, MIN(color.g, color.b));
+    const uint8_t delta = max - min;
+    if (!delta) return (hsv_t){0, 0, max};
+
+    int16_t hue;
+    if (max == color.r) hue = 43 * ((int16_t)color.g - color.b) / delta;
+    else if (max == color.g) hue = 85 + 43 * ((int16_t)color.b - color.r) / delta;
+    else hue = 171 + 43 * ((int16_t)color.r - color.g) / delta;
+    return (hsv_t){(uint8_t)hue, delta * 255u / max, max};
+}
 
 static bool omp_native_lighting(uint16_t code, bool pressed) {
     if (code < QK_UNDERGLOW_TOGGLE || code > RGB_MODE_TWINKLE) return false;
-    keyrecord_t record = {.event = {.pressed = pressed}};
-    process_underglow(code, &record);
-    if (pressed) {
-        omp_qmk_lighting_override = true;
-        omp_qmk_effect = (rgblight_get_mode() - 1u) % 9u;
-        rgblight_mode_noeeprom(RGBLIGHT_MODE_STATIC_LIGHT);
+    if (!pressed || !cc_rgb_master_enabled) return true;
+    if (!omp_matrix_override) {
+        omp_runtime_matrix = omp_profile.layers[cc_active].zones[0];
+        omp_matrix_override = true;
+    }
+    omp_zone_t *matrix = &omp_runtime_matrix;
+    const int8_t direction = get_mods() & MOD_MASK_SHIFT ? -1 : 1;
+    switch (code) {
+        case QK_UNDERGLOW_TOGGLE: matrix->flags ^= 1u; break;
+        case QK_UNDERGLOW_MODE_NEXT:
+        case QK_UNDERGLOW_MODE_PREVIOUS: {
+            const int8_t step = code == QK_UNDERGLOW_MODE_NEXT ? direction : -direction;
+            matrix->effect = (matrix->effect + OMP_EFFECT_COUNT + step) % OMP_EFFECT_COUNT;
+            break;
+        }
+        case QK_UNDERGLOW_VALUE_UP:
+        case QK_UNDERGLOW_VALUE_DOWN: {
+            const uint8_t level = omp_brightness_override[0] == 255
+                ? matrix->brightness : omp_brightness_override[0];
+            omp_brightness_override[0] = omp_step_value(
+                level, (code == QK_UNDERGLOW_VALUE_UP ? 8 : -8) * direction, RGBLIGHT_LIMIT_VAL);
+            break;
+        }
+        case QK_UNDERGLOW_SPEED_UP:
+        case QK_UNDERGLOW_SPEED_DOWN:
+            matrix->speed = omp_step_value(matrix->speed, (code == QK_UNDERGLOW_SPEED_UP ? 16 : -16) * direction, 255);
+            break;
+        case QK_UNDERGLOW_HUE_UP:
+        case QK_UNDERGLOW_HUE_DOWN:
+        case QK_UNDERGLOW_SATURATION_UP:
+        case QK_UNDERGLOW_SATURATION_DOWN: {
+            hsv_t color = omp_hsv(omp_rgb(matrix->color_a));
+            if (code == QK_UNDERGLOW_HUE_UP) color.h += 8 * direction;
+            if (code == QK_UNDERGLOW_HUE_DOWN) color.h -= 8 * direction;
+            if (code == QK_UNDERGLOW_SATURATION_UP) color.s = omp_step_value(color.s, 16 * direction, 255);
+            if (code == QK_UNDERGLOW_SATURATION_DOWN) color.s = omp_step_value(color.s, -16 * direction, 255);
+            const rgb_t rgb = hsv_to_rgb_nocie(color);
+            matrix->color_a = ((uint16_t)(rgb.r >> 3) << 11) | ((uint16_t)(rgb.g >> 2) << 5) | (rgb.b >> 3);
+            break;
+        }
+        default: {
+            static const uint8_t effects[] = {0, 5, 11, 8, 6, 9, 1, 3, 8, 7};
+            matrix->effect = effects[code - RGB_MODE_PLAIN];
+            break;
+        }
     }
     return true;
 }
 
-static rgb_t omp_rgb(uint16_t packed) {
-    return (rgb_t){
-        .r = ((packed >> 11) & 31u) * 255u / 31u,
-        .g = ((packed >> 5) & 63u) * 255u / 63u,
-        .b = (packed & 31u) * 255u / 31u,
-    };
-}
-
-static rgb_t omp_mix(rgb_t a, rgb_t b, uint8_t blend) {
-    return (rgb_t){
-        .r = ((uint16_t)a.r * (255u - blend) + (uint16_t)b.r * blend) / 255u,
-        .g = ((uint16_t)a.g * (255u - blend) + (uint16_t)b.g * blend) / 255u,
-        .b = ((uint16_t)a.b * (255u - blend) + (uint16_t)b.b * blend) / 255u,
-    };
-}
-
-// Five independently configured matrix zones plus the existing Frame zone.
-// Every physical LED is written exactly once and the 73-pixel chain flushed once.
 static void omp_lighting_tick(bool preview) {
-    if (timer_elapsed(omp_light_timer) < 30u) return;
-    omp_light_timer = timer_read();
-    ++omp_phase;
-    if (!preview) {
-        if (!omp_qmk_lighting_override && !rgblight_is_enabled()) rgblight_enable_noeeprom();
-        if (rgblight_get_mode() != RGBLIGHT_MODE_STATIC_LIGHT)
-            rgblight_mode_noeeprom(RGBLIGHT_MODE_STATIC_LIGHT);
+    if (timer_elapsed32(omp_light_timer) < 20u) return;
+    omp_light_timer = timer_read32();
+    const uint8_t layer = cc_active < omp_profile.layer_count ? cc_active : omp_profile.default_layer;
+    const omp_zone_t *zones = preview ? omp_preview_zones : omp_profile.layers[layer].zones;
+    const bool reactive = zones[0].flags & OMP_LIGHT_REACTIVE;
+    const uint32_t now = omp_light_timer;
+    rgb_t tint[OMP_MATRIX_ZONE_COUNT];
+    uint8_t alpha[OMP_MATRIX_ZONE_COUNT] = {0};
+    for (uint8_t zone = 0; zone < OMP_MATRIX_ZONE_COUNT; ++zone) {
+        if (!(omp_light_reaction_mask & (1u << zone))) continue;
+        uint32_t elapsed = now - omp_light_reaction_at[zone];
+        if (elapsed >= OMP_REACTIVE_MS) {
+            omp_light_reaction_mask &= ~(1u << zone);
+            continue;
+        }
+        if (!reactive) continue;
+        uint16_t packed = preview ? omp_preview_tints[zone] : cc_rgb.matrix_zones[layer][zone].color_b;
+        tint[zone] = omp_scale_rgb(omp_rgb(packed), 32);
+        alpha[zone] = (OMP_REACTIVE_MS - elapsed) * 255u / OMP_REACTIVE_MS;
     }
-    for (uint8_t zone = 0; zone < 6; ++zone) {
-        bool frame = zone == 5;
-        const omp_zone_t *z = preview ? &omp_preview_zones[frame ? 1 : 0] :
-            frame ? &omp_profile.layers[cc_active].zones[1] :
-                    &cc_rgb.matrix_zones[cc_active][zone];
-        uint8_t count = frame ? CC_RGB_FRAME_LED_COUNT : 0;
-        if (!frame) {
-            for (uint8_t i = 0; i < CC_RGB_MAIN_LED_COUNT; ++i)
-                if (cc_rgb.zone_map[i] == zone) ++count;
-        }
-        if (!count) continue; // A valid zone may temporarily have no assigned pixels.
-        uint8_t brightness = preview || omp_brightness_override[frame ? 1 : 0] == 255
-            ? z->brightness : omp_brightness_override[frame ? 1 : 0];
-        uint16_t phase = ((uint32_t)timer_read() * (z->speed + 16u) / 1024u);
-        uint16_t elapsed = timer_elapsed(omp_trigger_at);
-        uint16_t duration = (uint16_t)z->duration * 10u;
-        bool triggered = (z->triggers & omp_trigger) && elapsed < duration;
-        uint8_t effect = z->effect;
-        bool enabled = z->flags & 1u;
-        rgb_t a = omp_rgb(z->color_a), b = omp_rgb(z->color_b);
-        if (!preview && !frame && omp_qmk_lighting_override) {
-            brightness = rgblight_get_val();
-            if (brightness > RGBLIGHT_LIMIT_VAL) brightness = RGBLIGHT_LIMIT_VAL;
-            enabled = rgblight_is_enabled();
-            effect = omp_qmk_effect;
-            a = hsv_to_rgb((hsv_t){rgblight_get_hue(), rgblight_get_sat(), 255});
-        }
-        uint8_t position_in_zone = 0;
-        for (uint8_t led = 0; led < RGBLIGHT_LED_COUNT; ++led) {
-            if (frame ? led < CC_RGB_FRAME_LED_START :
-                        (led >= CC_RGB_MAIN_LED_COUNT || cc_rgb.zone_map[led] != zone))
-                continue;
-            uint8_t position = (z->flags & 2u) ? count - 1u - position_in_zone : position_in_zone;
-            ++position_in_zone;
-            uint8_t wave = 0;
-            uint8_t level = brightness;
-            switch (effect) {
-                case 1: wave = (position & 1u) ? 255 : 0; break;
-                case 2: wave = position >= count / 2u ? 255 : 0; break;
-                case 3: wave = count > 1 ? (uint16_t)position * 255u / (count - 1u) : 0; break;
-                case 4: wave = ((position + phase) % count) < 4u ? 0 : 255; break;
-                case 5: {
-                    uint8_t breath = phase & 255u;
-                    wave = breath < 128u ? breath * 2u : (255u - breath) * 2u;
-                    level = (uint16_t)brightness * (32u + wave * 7u / 8u) / 255u;
-                    wave = 0; break;
-                }
-                case 6: {
-                    uint8_t distance = (position + count - phase % count) % count;
-                    level = distance < 8u ? (uint16_t)brightness * (8u - distance) / 8u : brightness / 16u;
-                    break;
-                }
-                case 7: wave = ((uint16_t)position * 37u + phase * 13u) % 97u < 8u ? 255 : 0; break;
-                default: break;
+
+    for (uint8_t group = 0; group < 2; ++group) {
+        const omp_zone_t *z = !preview && !group && omp_enabled && omp_matrix_override
+            ? &omp_runtime_matrix : &zones[group];
+        const rgb_t a = omp_rgb(z->color_a), b = omp_rgb(z->color_b);
+        const bool enabled = z->flags & 1u;
+        uint8_t level = z->brightness;
+        if (!preview && omp_enabled && omp_brightness_override[group] != 255)
+            level = omp_brightness_override[group];
+        const uint16_t interval = cc_light_interval(z->speed);
+        const uint32_t step = now / interval;
+        const uint8_t phase = step * 8u + (now % interval) * 8u / interval;
+        const uint8_t count = group ? CC_RGB_FRAME_LED_COUNT : CC_RGB_MAIN_LED_COUNT;
+        const uint8_t first = group ? CC_RGB_FRAME_LED_START : 0;
+        for (uint8_t i = 0; i < count; ++i) {
+            rgb_t color = {0};
+            if (enabled && level) {
+                const uint8_t position = z->flags & 2u ? count - 1u - i : i;
+                color = omp_effect_pixel(z->effect, a, b, level, position, count, step, phase);
             }
-            rgb_t color = omp_mix(a, b, wave);
-            if (effect == 8)
-                color = hsv_to_rgb((hsv_t){(uint8_t)(position * 256u / count + phase), 255, 255});
-            if (triggered) {
-                uint8_t center = omp_trigger == 2 ? omp_encoder_position % count :
-                    (omp_last_key < OMP_KEYS ? (uint16_t)omp_last_key * count / OMP_KEYS : 0);
-                int16_t step = elapsed / 35u;
-                if (omp_trigger == 2 && omp_encoder_direction < 0) step = -step;
-                int16_t head = (center + step + count * 8u) % count;
-                uint8_t distance = (position + count - head) % count;
-                if (distance < 6u) {
-                    uint8_t blend = (uint32_t)(duration - elapsed) * (6u - distance) * 255u / (duration * 6u);
-                    color = omp_mix(color, b, blend);
-                }
+            if (group == 0 && reactive) {
+                const uint8_t zone = cc_rgb.zone_map[i];
+                if (alpha[zone]) color = omp_mix(color, tint[zone], alpha[zone]);
             }
-            if (!enabled) level = 0;
-            rgblight_driver.set_color(led, (uint16_t)color.r * level / 255u,
-                (uint16_t)color.g * level / 255u, (uint16_t)color.b * level / 255u);
+            rgblight_driver.set_color(first + i, color.r, color.g, color.b);
         }
     }
-    if (preview) rgblight_driver.flush();
-    else rgblight_set();
+    rgblight_driver.flush();
 }
 
 static uint32_t omp_screen_generation = UINT32_MAX;

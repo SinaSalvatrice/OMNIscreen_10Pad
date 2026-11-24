@@ -15,10 +15,8 @@ Der Starter richtet die USB-Bibliothek in einer eigenen Python-Umgebung ein.
 - Rechtsklick auf einen Layer öffnet Name, Farbmarkierung, Duplizieren und Startlayer. **+ Layer** fügt einen Layer hinzu.
 - Der Schieberegler an **GPIO28 / ADC2** erhält seine eigene Belegung pro Layer. Er kann Auf-/Abwärtsaktionen oder Main-/Frame-Helligkeit steuern. Minimum, Maximum, Schrittweite, Totzone und Richtung sind einstellbar. Firmwareversion 5 dreht die Grundrichtung um. Die Option „Richtung umkehren“ bleibt als Override pro Layer verfügbar.
 - Die Firmware hält den Reglerwert bei Schwankungen bis etwa 1 % des kalibrierten Wegs stabil. Anzeige, Tester und Regleraktionen verwenden denselben gefilterten Wert. Die kalibrierten Endpunkte bleiben bei 0 % und 100 % erreichbar.
-- **Beleuchtung** bietet neun Effekte, zwei Farben und unabhängige Einstellungen für die 14 Main- und 43 Frame-LEDs. Trigger reagieren auf Taste, Encoder, Layer oder Regler.
-- **Live am Pad** zeigt mit Firmware 6 die Einstellungen des ausgewählten Layers beim Bearbeiten direkt auf beiden LED-Gruppen. Beim Verlassen des Reiters, während eines Tests oder nach USB-Trennung erscheint wieder die gespeicherte Beleuchtung. **Übernehmen** behält die Änderungen im App-Entwurf, **Auf Pad speichern** überträgt sie dauerhaft.
-- **Quadratische 1:1-Vorschau:** Die LED-Anordnung wird in einem mittig platzierten Quadrat dargestellt, auch wenn das Beleuchtungsfenster breit ist. Drag-and-drop, Tastaturbewegung und die gespeicherten X/Y-Koordinaten nutzen dieselbe quadratische Fläche. Vorhandene LED-Anordnungen bleiben unverändert.
-- **Physische LED-Anordnung:** In der Beleuchtungs-Vorschau jede LED (0–56) einzeln anklicken und frei verschieben. Die Nummer bleibt die **echte Position im Datenstrang**, unabhängig von den Bildschirmkoordinaten. Main = 0–13, Frame = 14–56. Optional Nummern einblenden; selektierte LED mit Pfeiltasten um 1 px, mit Shift+Pfeiltasten um 5 px bewegen.
+- **Beleuchtung** gliedert sich pro Layer in Frame, Matrix und Reaktive Zonen. Frame und Matrix besitzen eigene Schalter, Effekte, Farben, Helligkeit und Tempo.
+- **Live am Pad** zeigt die gewählte Beleuchtung samt Zonenreaktionen auf dem Gerät. **Übernehmen** speichert den Entwurf. **Auf Pad speichern** übernimmt auch die gerade sichtbaren Änderungen im Beleuchtungseditor und speichert sie dauerhaft auf dem Gerät.
 - Die Editor-Anordnung wird sofort nach dem Loslassen lokal in `desktop-app/user-data/led-layout.json` gespeichert und gilt für alle Layer. **Anordnung laden**, **Speichern unter**, **Rückgängig** und **Zurücksetzen** stehen direkt unter der Vorschau. Import/Export verwenden `omnipad-led-layout` v1 mit 57 festen X/Y-Positionen (0–1). Diese Koordinaten sind reine **Editor-Metadaten**, keine firmwareseitige LED-Neuzuordnung und werden **nicht** aufs Pad geflasht. Für die Sicherung auf einem zweiten PC `Speichern unter` verwenden.
 
 - **Snippet-Bibliothek** verwaltet Text, Tasten, gedrückte/gehaltene Tasten und Pausen. Der Schritt-Editor akzeptiert Aktionsnamen wie `tap Kopieren` und `down Strg` sowie Hex-Keycodes. Texte werden für deutsches Tastaturlayout übersetzt.
@@ -173,53 +171,36 @@ Die serielle Datenkette an **GP29** besteht jetzt aus **30 Matrix-LEDs**
 Frame-LEDs** (neue IDs **30–72**, vorher 14–56). Frame-DIN wird mit dem
 DOUT von LED 29 verbunden; seine eigene 43er-Reihenfolge bleibt erhalten.
 
-Die Matrix ist als 6 Reihen × 5 Spalten angelegt. Die Verkabelung
-kann **zeilenweise oder zickzack** verlaufen. Aus einem Foto lässt sich
-die tatsächliche Datenrichtung nicht ablesen; deshalb im Beleuchtungseditor
-über die Schaltflächen **Zeilenweise** oder **Zickzack** die
-Vorschau zunächst passend ordnen und gegebenenfalls einzelne
-LEDs mit der Maus verschieben. Eine Positionsänderung am PC ändert keine
-Datenleitungen und keine Nummern am echten Strip.
+Die 6×5-Matrix bekommt eine gemeinsame Grundanimation. Die fünf festen
+Zonen reagieren zusätzlich auf Eingaben, sobald **Zonenreaktionen
+einschalten** aktiv ist.
 
-**Sechs auswählbare Lichtgruppen:**
-1. Tasten (standardmäßig 16 Matrix-Pixel)
-2. Regler (3 Matrix-Pixel)
-3. Encoder (2 Matrix-Pixel)
-4. K0 (2 Matrix-Pixel)
-5. Display (7 Matrix-Pixel)
-6. Frame (43 bisherige Frame-Pixel)
+| Zone | LEDs | Auslöser |
+| --- | ---: | --- |
+| Tasten | 16 | Tastendruck |
+| Regler | 3 | Reglerbewegung |
+| Encoder | 2 | Drehen oder Drücken |
+| K0 | 2 | K0 drücken |
+| Display | 7 | Layerwechsel |
 
-Die Zahlen sind nur eine **Startverteilung**. In der Vorschau eine
-Matrix-LED 0–29 wählen, die Zielzone auswählen und
-**LED → gewählte Zone** anklicken. Die Zuordnung wird mit dem
-Profil gespeichert und an die Firmware übertragen. **Frame-LEDs 30–72
-können nicht versehentlich in eine Matrix-Zone verschoben werden.**
+Jede Zone hat eine eigene Reaktionsfarbe und klingt in etwa 450 ms ab.
+In der App prüft **Testen** die gewählte Zone in der Vorschau. Ein
+vorhandenes Standard-Zickzack-Mapping bleibt als Verkabelungsreihenfolge
+erhalten. Benutzerdefinierte Zonenzuordnungen aus alten Profilen werden
+beim Verwenden der neuen Beleuchtung durch die feste Zuordnung ersetzt.
 
-Für jede Matrix-Zone und jeden Layer lassen sich Farbe A/B,
-Animation, Helligkeit, Richtung, Geschwindigkeit und Trigger getrennt
-einstellen. Die bereits vorhandene Frame-Zone bleibt pro Layer
-unabhängig. Der bestehende 6124-Byte-Profilblock wird nicht vergrößert;
-die fünf × zwölf zusätzlichen Matrix-Zonen und ihre Zuordnung liegen in
-einem **separaten 651-Byte-QMK-User-EEPROM-Block**. Die ersten 17 Bytes
-der bisherigen Main-/Frame-Einstellungen bleiben an ihrer alten
-Position. Beim ersten Start wird eine fehlende Matrix-Erweiterung
-mit sicheren Standardwerten initialisiert.
+Frame und Matrix bieten 13 Effekte, darunter Pendel, Welle, Farbwechsel
+und Doppelkomet. Das Lauflicht am Frame braucht bei Tempo 0 etwa
+22 Sekunden pro Runde. **RGB POWER** im Gerätemenü schaltet die
+Beleuchtung als Ganzes. Beim Einschalten gelten die gespeicherten
+Frame- und Matrix-Einstellungen des Layers, auch bei Firmware-Tastenbelegung.
 
-**Übertragen:** Für die neue Hardware einmalig die neue UF2 flashen,
-dann in der App **Auf Pad speichern**. Die App schreibt das bisherige
-Profil und anschließend die Matrix-Zonen, liest beide zurück und meldet
-Abweichungen. Die bisherige 0x79-Livevorschau kann nur *Main insgesamt*
-oder *Frame* previewen. Deshalb zeigt die App einzelne Matrix-Zonen
-vor dem Speichern korrekt in der PC-Vorschau statt fälschlich als
-vollständige Hardware-Livevorschau.
+**Übertragen:** Ab Firmware 8 akzeptiert das Pad die neuen Effekte
+und die optionalen Zonenreaktionen. Das Profil bleibt 6124 Byte groß.
+Die App sichert das bisherige Profil samt Zonen und liest die neu
+gespeicherten Einstellungen zur Prüfung zurück. Vor dem Firmware-Update
+OmniPad-Profil und VIA-Belegung exportieren.
 
-**Achtung bei der EEPROM-Umstellung:** Der QMK-User-Block wird größer.
-Dadurch können ältere VIA-Bereiche an neue Adressen rücken. Vor dem
-Flashen **OmniPad-Profil und VIA-Sicherung exportieren**, neue
-Firmware erst nach erfolgreichem Build aufspielen. Die zwei
-transaktionalen OmniPad-Profilspeicher ab Adresse 4096 bleiben
-unverändert. Die neue Firmware darf nicht ohne Kontrolle auf ein Pad
-mit unbekannter EEPROM-Belegung geflasht werden.
 
 **Stromversorgung:** 73 RGB-LEDs dürfen nicht aus dem 3,3-V-Ausgang
 des RP2040 gespeist werden. Externe, ausreichend dimensionierte

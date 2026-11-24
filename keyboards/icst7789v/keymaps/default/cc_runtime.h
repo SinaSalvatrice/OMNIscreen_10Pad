@@ -541,7 +541,6 @@ static void cc_menu_screen(void) {
 static uint8_t cc_internal_drawn_mode = 0;
 static uint8_t cc_internal_drawn_selected = 255;
 static uint8_t cc_internal_drawn_confirm = 255;
-static uint8_t cc_internal_drawn_brightness = 255;
 static uint8_t cc_internal_drawn_power = 255;
 static uint8_t cc_internal_drawn_source = 255;
 static void cc_internal_item(uint8_t i, const char *name, bool selected) {
@@ -551,8 +550,8 @@ static void cc_internal_item(uint8_t i, const char *name, bool selected) {
     cc_draw_text(x + 6, y + 8, name, 1, C_WHITE);
 }
 static void cc_internal_screen(void) {
-    static const char *sys[10] = {
-        "RGB POWER", "RGB BRIGHT", "DISPLAY", "CONFIG SOURCE", "MATRIX",
+    static const char *sys[9] = {
+        "RGB POWER", "DISPLAY", "CONFIG SOURCE", "MATRIX",
         "DEVICE INFO", "RESTART", "BOOTLOADER", "CLEAR EEPROM", "BACK"
     };
     static const char *disp[5] = {
@@ -560,15 +559,13 @@ static void cc_internal_screen(void) {
     };
     static const char *config[3] = {"FIRMWARE", "APP PROFILE", "BACK"};
     const char **items = cc_internal_mode == 2 ? disp : cc_internal_mode == 4 ? config : sys;
-    const uint8_t count = cc_internal_mode == 2 ? 5 : cc_internal_mode == 4 ? 3 : 10;
-    const uint8_t brightness = rgblight_get_val();
+    const uint8_t count = cc_internal_mode == 2 ? 5 : cc_internal_mode == 4 ? 3 : 9;
     const uint8_t power = cc_rgb_master_enabled ? 1 : 0;
     const uint8_t source = cc_use_app_profile ? 1 : 0;
     const bool full = cc_internal_drawn_mode != cc_internal_mode ||
                       cc_internal_drawn_confirm != cc_internal_confirm ||
                       cc_internal_drawn_power != power ||
-                      cc_internal_drawn_source != source ||
-                      (cc_internal_mode == 1 && cc_internal_drawn_brightness != brightness);
+                      cc_internal_drawn_source != source;
     if (full) {
         cc_background();
         cc_draw_text(11, 37, cc_internal_mode == 2 ? "DISPLAY" :
@@ -582,10 +579,7 @@ static void cc_internal_screen(void) {
         } else {
             for (uint8_t i = 0; i < count; ++i) cc_internal_item(i, items[i], i == cc_internal_selected);
             if (cc_internal_mode == 1) {
-                char info[24];
-                (void)snprintf(info, sizeof(info), "RGB %s  BRIGHT %u/64",
-                               power ? "ON" : "OFF", (unsigned)brightness);
-                cc_draw_text(9, 205, info, 1, C_YELLOW);
+                cc_draw_text(9, 205, power ? "RGB ON" : "RGB OFF", 1, C_YELLOW);
             } else if (cc_internal_mode == 4) {
                 cc_draw_text(11, 173, source ? "ACTIVE APP" : "ACTIVE FIRMWARE", 1, C_YELLOW);
                 if (!cc_visual_profile_available) cc_draw_text(11, 189, "NO APP PROFILE SAVED", 1, C_RED);
@@ -609,7 +603,6 @@ static void cc_internal_screen(void) {
     cc_internal_drawn_mode = cc_internal_mode;
     cc_internal_drawn_selected = cc_internal_selected;
     cc_internal_drawn_confirm = cc_internal_confirm;
-    cc_internal_drawn_brightness = brightness;
     cc_internal_drawn_power = power;
     cc_internal_drawn_source = source;
 }

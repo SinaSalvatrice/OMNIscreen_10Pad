@@ -234,7 +234,8 @@ class OmniPad:
         return {"enabled": bool(reply[7]), "max_layers": reply[8],
                 "generation": int.from_bytes(reply[11:15], "little"), "expander": bool(reply[15]),
                 "light_preview": bool(reply[16] & 1), "device_actions": bool(reply[16] & 2),
-                "screen_themes": bool(reply[16] & 4), "matrix_zones": bool(reply[16] & 8)}
+                "screen_themes": bool(reply[16] & 4), "matrix_zones": bool(reply[16] & 8),
+                "simple_lighting": bool(reply[16] & 16)}
 
     def read_profile(self):
         data = bytearray()
@@ -277,7 +278,8 @@ class OmniPad:
         self._exchange((0x07, 0, 0x78, output), timeout=DIAGNOSTIC_TIMEOUT_MS)
 
     def preview_lighting(self, payload):
-        self._exchange(bytes((0x07, 0, 0x79, payload is not None)) + (payload or b""))
+        mode = 0 if payload is None else 1 if len(payload) == 2 * ZONE_STRUCT.size else 2
+        self._exchange(bytes((0x07, 0, 0x79, mode)) + (payload or b""))
 
     def matrix_zone_capabilities(self):
         reply = self._exchange((0x08, 0, 0x7B))
