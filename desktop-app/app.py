@@ -32,7 +32,7 @@ from led_zones import FRAME_COUNT, MATRIX_ZONES, default_zone_map, matrix_order,
 from lighting import REACTIVE_DURATION_MS, TWO_COLOR_EFFECTS, led_colors, reactive_color
 from tester import Tester
 from ui_helpers import BG, PANEL, KEY, TEXT, MUTED, ACCENT, Form, ScrollPanel, button, label, style
-from via import OmniPad, ViaError, UnsupportedCommand
+from via import OmniPad, ViaError, UnsupportedCommand, UsbConnectionError
 from windows_volume import set_master_volume_percent, WindowsVolumeError
 
 
@@ -52,6 +52,7 @@ class Editor:
         self.detection = None
         self.has_detection = False
         self.next_connection_check = 0
+        self.next_usb_presence_check = 0
         self.closing = False
         self.progress = queue.SimpleQueue()
         self.history, self.future = [], []
@@ -95,7 +96,13 @@ class Editor:
         button(toolbar, "Vom Pad laden", lambda: self.connect(replace=True)).pack(side="right", padx=3)
         button(toolbar, "VIA-Sicherung", self.backup).pack(side="right", padx=3)
         self.status = tk.StringVar(value="Profil wird vorbereitet …")
-        tk.Label(window, textvariable=self.status, bg=BG, fg=MUTED, anchor="w").pack(fill="x", padx=22)
+        status_bar = tk.Frame(window, bg=BG)
+        status_bar.pack(fill="x", padx=22)
+        self.usb_status = tk.Label(status_bar, bg=BG, anchor="e")
+        self.usb_status.pack(side="right", padx=(12, 0))
+        self.show_usb_status("USB wird geprüft")
+        tk.Label(status_bar, textvariable=self.status, bg=BG, fg=MUTED, anchor="w",
+                 wraplength=780, justify="left").pack(side="left", fill="x", expand=True)
         self.layer_bar = tk.Frame(window, bg=BG)
         self.layer_bar.pack(fill="x", padx=20, pady=(14, 8))
         self.layer_tabs = tk.Frame(self.layer_bar, bg=BG)
@@ -145,6 +152,9 @@ class Editor:
             self.polling = True
         self.refresh_buttons()
 
+    def show_usb_status(self, text, color=MUTED):
+        self.usb_status.configure(text=text, fg=color)
+
     def tick(self):
         while not self.progress.empty():
             done, size = self.progress.get()
@@ -159,7 +169,17 @@ class Editor:
                 result = future.result()
             except (OSError, RuntimeError, ValueError, KeyError, TypeError) as error:
                 self.status.set(str(error))
-                if isinstance(error, OSError) or (polling and not isinstance(error, UnsupportedCommand)):
+                if isinstance(error, UsbConnectionError):
+                    if error.present is False:
+                        self.show_usb_status("USB nicht angeschlossen")
+                    elif error.present:
+                        self.show_usb_status("USB angeschlossen · VIA nicht verfügbar", ACCENT)
+                    else:
+                        self.show_usb_status("USB-Status unbekannt", ACCENT)
+                elif isinstance(error, OSError) or (polling and not isinstance(error, UnsupportedCommand)):
+                    self.show_usb_status("USB-Verbindung unterbrochen", ACCENT)
+                if isinstance(error, (OSError, UsbConnectionError)) or (
+                        polling and not isinstance(error, UnsupportedCommand)):
                     if self.device:
                         self.device.close()
                     self.device = None
@@ -195,12 +215,17 @@ class Editor:
         read_detection = self.has_detection
         read_tester = self.tester_page.active and self.tester_page.native
         payload = self.lighting_preview_payload()
-        send_preview = payload != self.preview_sent or (
-            payload is not None and monotonic() >= self.preview_renew_at)
-        if not (read_detection or read_tester or send_preview):
+        now = monotonic()
+        send_preview = payload != self.preview_sent or (payload is not None and now >= self.preview_renew_at)
+        check_presence = now >= self.next_usb_presence_check
+        if check_presence:
+            self.next_usb_presence_check = now + 1
+        if not (read_detection or read_tester or send_preview or check_presence):
             return
 
         def poll():
+            if check_presence and not pad.usb_present():
+                raise UsbConnectionError("OmniPad vom USB-Anschluss getrennt.", present=False)
             preview_rejected = False
             if send_preview:
                 try:
@@ -254,6 +279,7 @@ class Editor:
         self.preview_sent = None
         if not automatic or self.next_connection_check == 0:
             self.status.set("USB-Verbindung wird geprüft …")
+            self.show_usb_status("USB wird geprüft")
         self.next_connection_check = monotonic() + 2
         metadata = deepcopy(self.profile)
 
@@ -268,23 +294,20 @@ class Editor:
                     pass
                 finally:
                     previous.close()
-            try:
-                pad = OmniPad.connect()
-            except OSError as error:
-                raise ViaError(f"Die VIA-Schnittstelle konnte nicht geöffnet werden · {error}") from error
+            pad = OmniPad.connect()
             try:
                 warnings = []
                 try:
                     caps = pad.capabilities()
-                except UnsupportedCommand:
+                except ViaError:
                     caps = None
                 try:
                     detection = pad.detection()
-                except UnsupportedCommand:
+                except ViaError:
                     detection = None
                 try:
                     pad.tester_report()
-                except UnsupportedCommand:
+                except ViaError:
                     native_tester = False
                 else:
                     native_tester = True
@@ -307,7 +330,7 @@ class Editor:
                 return pad, caps, raw, snapshot, detection, native_tester, matrix_data, warnings
             except OSError as error:
                 pad.close()
-                raise ViaError(f"Die USB-Verbindung wurde beim Auslesen unterbrochen · {error}") from error
+                raise UsbConnectionError(f"Die USB-Verbindung wurde beim Auslesen unterbrochen. {error}") from error
             except Exception:
                 pad.close()
                 raise
@@ -348,6 +371,7 @@ class Editor:
                 self.save_draft()
             self.layer = min(self.layer, len(self.profile["layers"]) - 1)
             version = f"Firmware {self.device.firmware}" if self.device.firmware else "Firmwareversion unbekannt"
+            self.show_usb_status(f"USB verbunden · {version}", "#8ac99c")
             message = f"USB verbunden · {version} · {len(self.profile['layers'])} eingerichtete Layer"
             if not self.capabilities:
                 message += " · Erweiterte Funktionen benötigen die neue Firmware"
