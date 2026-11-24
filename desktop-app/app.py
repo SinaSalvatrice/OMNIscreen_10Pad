@@ -66,6 +66,7 @@ class Editor:
         self.active_profile = None
         self.volume_last_sent = None
         self.preview_sent = None
+        self.preview_error = None
         self.preview_renew_at = 0
         self.profile = default_profile()
         self.disk_draft = False
@@ -191,6 +192,8 @@ class Editor:
                     self.has_detection = False
                     self.detection = None
                     self.preview_sent = None
+                    self.preview_error = None
+                    self.preview_renew_at = 0
                     self.key_live.set("Regler GP28 · USB-Verbindung getrennt")
                     self.detect_text.set("USB-Verbindung getrennt · Das Pad wird erneut gesucht.")
                     self.next_connection_check = monotonic() + 2
@@ -221,31 +224,29 @@ class Editor:
         read_tester = self.tester_page.active and self.tester_page.native
         payload = self.lighting_preview_payload()
         now = monotonic()
-        send_preview = payload != self.preview_sent or (payload is not None and now >= self.preview_renew_at)
+        preview_due = now >= self.preview_renew_at
+        if ((payload != self.preview_sent or (payload is not None and preview_due))
+                and (self.preview_error is None or preview_due)):
+            self.send_lighting_preview(pad, payload)
+            return
         visible_state = self.device_layers.state
         visible_layers = self.device_layers.layers
         check_presence = now >= self.next_usb_presence_check
         if check_presence:
             self.next_usb_presence_check = now + 1
-        if not (read_detection or read_tester or send_preview or check_presence):
+        if not (read_detection or read_tester or check_presence):
             return
 
         def poll():
             if check_presence and not pad.usb_present():
                 raise UsbConnectionError("OmniPad vom USB-Anschluss getrennt.", present=False)
-            preview_rejected = False
-            if send_preview:
-                try:
-                    pad.preview_lighting(payload)
-                except UnsupportedCommand:
-                    preview_rejected = True
             try:
                 detection = pad.detection() if read_detection else None
             except UnsupportedCommand:
                 detection = None
             report = pad.tester_report() if read_tester else None
             layer_update = None
-            if check_presence:
+            if check_presence and payload is None:
                 try:
                     state = pad.device_layer_state(detection=detection)
                     if state is None:
@@ -256,12 +257,12 @@ class Editor:
                         layer_update = (state, pad.read_device_layers(state))
                 except (ViaError, ValueError):
                     pass
-            return detection, report, preview_rejected, layer_update
+            return detection, report, layer_update
 
         def ready(result):
             if self.device is not pad:
                 return
-            detection, report, preview_rejected, layer_update = result
+            detection, report, layer_update = result
             if layer_update:
                 state, layers = layer_update
                 self.device_layers.update_from_pad(state, layers, detection.mask if detection else 0)
@@ -272,14 +273,6 @@ class Editor:
                 else:
                     state = self.device_layers.state
                 self.device_layers.update_from_pad(state, self.device_layers.layers, detection.mask)
-            if preview_rejected:
-                self.preview_sent = None
-                if detection is None or not detection.enabled:
-                    self.capabilities["light_preview"] = False
-                    self.status.set("Das Pad hat die Hardwarevorschau abgelehnt")
-            elif send_preview:
-                self.preview_sent = payload
-                self.preview_renew_at = monotonic() + 0.5
             self.has_detection &= detection is not None
             if detection is not None:
                 previous = self.detection
@@ -290,6 +283,26 @@ class Editor:
                 self.tester_page.report(detection, report)
 
         self.submit(poll, ready, polling=True)
+
+    def send_lighting_preview(self, pad, payload):
+        # Give edits and keep-alives their own USB turn ahead of profile or
+        # telemetry reads. A rejected report can be retried after a pad test.
+        def send():
+            try:
+                pad.preview_lighting(payload)
+            except ViaError as error:
+                return str(error)
+            return None
+
+        def ready(error):
+            if self.device is not pad:
+                return
+            self.preview_error = error
+            if error is None:
+                self.preview_sent = payload
+            self.preview_renew_at = monotonic() + (0.75 if error else 0.45)
+
+        self.submit(send, ready, polling=True)
 
     def connect(self, replace=False, *, automatic=False):
         if self.busy():
@@ -306,6 +319,8 @@ class Editor:
         self.has_detection = False
         self.detection = None
         self.preview_sent = None
+        self.preview_error = None
+        self.preview_renew_at = 0
         if not automatic or self.next_connection_check == 0:
             self.status.set("USB-Verbindung wird geprüft …")
             self.show_usb_status("USB wird geprüft")
@@ -999,7 +1014,7 @@ class Editor:
         self.light_settings = tk.Frame(self.light_page, bg=PANEL, width=420)
         self.light_settings.pack(side="right", fill="y", padx=(12, 0), pady=(8, 0))
         self.light_settings.pack_propagate(False)
-        self.light_live = tk.BooleanVar(value=False)
+        self.light_live = tk.BooleanVar(value=True)
         self.light_live_status = tk.StringVar()
         self.light_test = None
         self.light_started = monotonic()
@@ -1019,7 +1034,7 @@ class Editor:
         self.led_positions = matrix_positions(order) + self.light_frame_positions
         self.led_zone_map = default_zone_map(order)
 
-        ttk.Checkbutton(self.light_settings, text="Live am Pad",
+        ttk.Checkbutton(self.light_settings, text="LED-Livevorschau am Pad",
                         variable=self.light_live,
                         command=self.refresh_light_live_status).pack(anchor="w", padx=14, pady=(12, 0))
         label(self.light_settings, textvariable=self.light_live_status, color=MUTED,
@@ -1125,10 +1140,15 @@ class Editor:
         elif not (self.capabilities and self.capabilities.get("simple_lighting")
                   and self.capabilities["light_preview"]):
             text = "Livevorschau am Pad benötigt die neue Beleuchtungs-Firmware"
-        elif self.tester_page.active or (self.detection and self.detection.enabled):
+        elif (self.tester_page.active or self.tester_page.pending
+              or (self.detection and self.detection.enabled)):
             text = "Livevorschau pausiert während des Gerätetests"
+        elif self.preview_error:
+            text = f"Livevorschau wird erneut versucht. {self.preview_error}"
+        elif self.preview_sent is None:
+            text = "LED-Vorschau wird ans Pad gesendet …"
         else:
-            text = "Live am Pad · Reaktionen mit den Bedienelementen am Pad testen"
+            text = "LED-Livevorschau am Pad aktiv"
         self.light_live_status.set(text)
 
     def lighting_preview_payload(self):

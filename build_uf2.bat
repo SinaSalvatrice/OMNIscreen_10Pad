@@ -93,5 +93,5 @@ if errorlevel 1 (
 
 git -C "%PROJECT_ROOT%" rev-parse HEAD
 echo Building icst7789v:default from current source tree...
-"%QMK_BASH%" --noprofile --norc -c "export HOME=\"$(cygpath -u \"$USERPROFILE\")\"; export PROJECT_ROOT=\"$(cygpath -u \"$PROJECT_ROOT\")\"; export QMK_HOME=\"$(cygpath -u \"$QMK_HOME\")\"; export BUILD_OUTPUT_DIR=\"$(cygpath -u \"$BUILD_OUTPUT_DIR\")\"; export PATH=\"$HOME/bin:/c/QMK_MSYS/mingw64/bin:/c/QMK_MSYS/usr/bin:/opt/qmk/bin:$PATH\"; bash \"$PROJECT_ROOT/scripts/build_uf2_internal.sh\""
+"%QMK_BASH%" --noprofile --norc "%PROJECT_ROOT:\=/%/scripts/build_uf2_internal.sh" <nul
 exit /b %ERRORLEVEL%
