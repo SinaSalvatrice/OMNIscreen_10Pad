@@ -2,7 +2,46 @@
 #pragma once
 #include "via.h"
 
+// Read the layer names and key labels from the same source as the TFT.
+static void omp_device_layer_report(uint8_t *data) {
+    const uint8_t layer = data[3], page = data[4];
+    const uint8_t count = omp_layer_count();
+    memset(&data[5], 0, 27);
+    if (layer == 255 && page == 0) {
+        data[5] = 1; // Wire format version.
+        data[6] = omp_enabled;
+        data[7] = count;
+        data[8] = cc_active;
+        data[9] = cc_preview;
+        memcpy(&data[10], &omp_generation, sizeof(omp_generation));
+        return;
+    }
+    if (layer >= count || page > OMP_KEYS / 2u) {
+        data[0] = id_unhandled;
+        return;
+    }
+
+    if (page == 0) {
+        const char *name = omp_enabled ? omp_profile.layers[layer].name : cc_layers[layer].name;
+        const uint16_t accent = omp_enabled ? omp_profile.layers[layer].accent : cc_layers[layer].accent_rgb565;
+        strncpy((char *)&data[5], name, 15);
+        memcpy(&data[21], &accent, sizeof(accent));
+        return;
+    }
+    const uint8_t first = (page - 1u) * 2u;
+    for (uint8_t i = 0; i < 2; ++i) {
+        const uint8_t key = first + i;
+        const char *label = omp_enabled ? omp_profile.layers[layer].keys[key].label :
+            key < CC_KEY_COUNT ? cc_layers[layer].labels[key] : key == 10 ? "PUSH" : "K0";
+        strncpy((char *)&data[5 + i * 12u], label, 11);
+    }
+}
+
 static bool omp_command(uint8_t *data, uint8_t length) {
+    if (length == 32 && data[0] == id_custom_get_value && data[1] == 0 && data[2] == 0x7C) {
+        omp_device_layer_report(data);
+        return true;
+    }
     if (length != 32 || data[1] != 0 ||
         (data[0] != id_custom_get_value && data[0] != id_custom_set_value) ||
         data[2] < 0x71 || data[2] > 0x79) return false;
