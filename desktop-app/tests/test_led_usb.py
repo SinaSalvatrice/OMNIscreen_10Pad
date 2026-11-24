@@ -1,6 +1,7 @@
 """USB protocol contract tests for the 30-LED zone sidecar."""
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from struct import unpack_from
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -8,7 +9,40 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from profile import (default_profile, zone_config, ZONE_STRUCT, encode_lighting,
                      MAX_LAYERS, colorhex, encode_light_preview)
 from led_zones import default_zone_map, MATRIX_ZONES
-from via import OmniPad
+from via import OmniPad, UsbConnectionError
+
+
+class UsbConnectionTests(unittest.TestCase):
+    @patch("via.hid.enumerate", return_value=[])
+    @patch("via._acquire_usb_lease")
+    def test_unplugged_does_not_take_the_usb_lease(self, lease, enumerate_usb):
+        with self.assertRaises(UsbConnectionError) as error:
+            OmniPad.connect()
+        self.assertIs(error.exception.present, False)
+        self.assertFalse(OmniPad.usb_present())
+        lease.assert_not_called()
+
+    @patch("via.hid.enumerate", return_value=[{"path": b"keyboard", "usage_page": 1, "usage": 6}])
+    def test_keyboard_interface_alone_reports_attached(self, enumerate_usb):
+        with self.assertRaises(UsbConnectionError) as error:
+            OmniPad.connect()
+        self.assertIs(error.exception.present, True)
+        self.assertTrue(OmniPad.usb_present())
+
+    @patch("via.hid.enumerate")
+    @patch("via._acquire_usb_lease")
+    @patch("via.hid.device")
+    def test_unanswered_handshake_releases_device_and_lease(self, make_device, make_lease, enumerate_usb):
+        enumerate_usb.side_effect = [[{"path": b"raw", "usage_page": 0xFF60, "usage": 0x61}], []]
+        device = make_device.return_value
+        device.write.return_value = 33
+        device.read.return_value = []
+        lease = make_lease.return_value
+        with self.assertRaises(UsbConnectionError) as error:
+            OmniPad.connect()
+        self.assertIs(error.exception.present, True)
+        device.close.assert_called_once()
+        lease.close.assert_called_once()
 
 
 class FakeZonePad:

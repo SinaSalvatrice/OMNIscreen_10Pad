@@ -193,7 +193,9 @@ static uint16_t cc_view_accent(void) {
 static uint8_t cc_view_preset(void) {
     return cc_visual_profile_available ? omp_profile.themes[cc_view_kind()].preset : 0;
 }
-static void cc_background(void) {
+static const char cc_default_footer[] = "ENC HOLD: LIST  K0 HOLD: MENU  K0 3X: TEST";
+
+static void cc_background(const char *footer, uint16_t footer_color) {
     uint16_t bg = cc_view_bg();
     uint16_t panel = cc_view_preset() == 1 ? 0x0000 : 0x18C7;
     lcd_fill(0, 0, LCD_W, LCD_H, bg);
@@ -211,7 +213,7 @@ static void cc_background(void) {
                              cc_internal_mode ? "MENU" :
                              cc_screen_selection == CC_SCREEN_LAYERS ? "LIST" : "MAP";
     cc_draw_text(270, 9, view_label, 1, cc_view_accent());
-    cc_draw_text(7, 225, "ENC HOLD: LIST  K0 HOLD: MENU  K0 3X: TEST", 1, cc_view_accent());
+    if (footer) cc_draw_text(7, 225, footer, 1, footer_color);
 }
 
 static void cc_layer_key_tile(uint8_t i, uint8_t selected, const cc_layer_desc_t *desc, uint16_t accent) {
@@ -264,11 +266,10 @@ static void cc_layer_index_row(uint8_t i, uint16_t accent) {
 static void cc_layer_index_screen(void) {
     const uint16_t accent = cc_view_accent();
     if (cc_layer_list_invalid || cc_active != cc_layer_list_last_active) {
-        cc_background();
+        cc_background("K3 UP  K7 DOWN  K9 OPEN  K5 BACK", C_WHITE);
         cc_draw_text(10, 36, "LAYER LIST", 2, accent);
         for (uint8_t i = 0; i < omp_layer_count() && i < OMP_LAYERS; ++i)
             cc_layer_index_row(i, accent);
-        cc_draw_text(8, 225, "K3 UP K7 DOWN K9 OPEN K5 BACK", 1, C_WHITE);
         cc_layer_list_invalid = false;
     } else if (cc_preview != cc_layer_list_last_selection) {
         cc_layer_index_row(cc_layer_list_last_selection, accent);
@@ -279,7 +280,7 @@ static void cc_layer_index_screen(void) {
 }
 
 static void cc_navigation_screen(void) {
-    cc_background();
+    cc_background(cc_default_footer, cc_view_accent());
     const uint16_t accent = cc_view_accent();
     const uint8_t selected = cc_preview < omp_layer_count() ? cc_preview : 0;
     const char *name = omp_enabled ? omp_profile.layers[selected].name : cc_layers[selected].name;
@@ -299,7 +300,7 @@ static void cc_layer_screen(void) {
     const uint16_t accent = cc_visual_profile_available ? cc_view_accent() : desc->accent_rgb565;
     if (cc_layer_screen_invalid || selected != drawn_layer || cc_active != drawn_active ||
         cc_display_mode != drawn_display_mode || omp_generation != drawn_generation) {
-        cc_background();
+        cc_background(cc_default_footer, cc_view_accent());
         lcd_fill(7, 33, 109, 171, 0x2186);
         lcd_fill(7, 33, 109, 4, accent);
         cc_draw_icon(selected, accent);
@@ -489,7 +490,7 @@ static void cc_matrix_adxl_widget(void) {
 
 static void cc_matrix_test_screen(void) {
     if (cc_matrix_full_redraw) {
-        cc_background();
+        cc_background(NULL, 0);
         lcd_fill(7, 33, 109, 171, cc_view_preset() == 1 ? 0x0000 : 0x2186);
         lcd_fill(7, 33, 109, 4, cc_view_accent());
         cc_draw_text(13, 55, "MATRIX", 2, C_WHITE);
@@ -525,7 +526,7 @@ static void cc_matrix_test_screen(void) {
 
 static void cc_menu_screen(void) {
     static const char *options[6] = {"DISPLAY", "ENCODER", "HOME", "MATRIX", "HELP", "COLORS"};
-    cc_background();
+    cc_background(cc_default_footer, cc_view_accent());
     lcd_fill(7, 33, 109, 171, cc_view_preset() == 1 ? 0x0000 : 0x2186);
     cc_draw_text(17, 64, "MODULE", 2, cc_view_accent());
     cc_draw_text(15, 105, "K0 ONLY", 1, C_WHITE);
@@ -567,7 +568,11 @@ static void cc_internal_screen(void) {
                       cc_internal_drawn_power != power ||
                       cc_internal_drawn_source != source;
     if (full) {
-        cc_background();
+        const char *footer = cc_internal_confirm != 255 ? "K9 CONFIRM  K5 BACK" :
+                             cc_internal_mode == 1 ? "K3 UP  K7 DOWN  K6/K8 COL  K9 OK  K5 BACK" :
+                             cc_internal_mode == 3 ? "K9 OK  K5 BACK" :
+                             "K3 UP  K7 DOWN  K9 OK  K5 BACK";
+        cc_background(footer, C_CYAN);
         cc_draw_text(11, 37, cc_internal_mode == 2 ? "DISPLAY" :
                      cc_internal_mode == 4 ? "CONFIGURATION" :
                      cc_internal_mode == 3 ? "DEVICE INFO" : "SETTINGS", 2, C_CYAN);
@@ -591,7 +596,6 @@ static void cc_internal_screen(void) {
             cc_draw_text(12, 120, "K9 AGAIN TO CONFIRM", 1, C_WHITE);
             cc_draw_text(12, 144, "K5 BACK TO CANCEL", 1, C_CYAN);
         }
-        cc_draw_text(8, 225, "K3 UP K7 DOWN K6 LEFT K8 RIGHT K9 OK K5 BACK", 1, C_CYAN);
     } else if (cc_internal_drawn_selected != cc_internal_selected && cc_internal_mode != 3) {
         if (cc_internal_drawn_selected < count) {
             cc_internal_item(cc_internal_drawn_selected, items[cc_internal_drawn_selected], false);
@@ -608,7 +612,7 @@ static void cc_internal_screen(void) {
 }
 
 static void cc_help_screen(void) {
-    cc_background();
+    cc_background(cc_default_footer, cc_view_accent());
     cc_draw_text(12, 40, "MODULE HELP", 2, C_CYAN);
     cc_draw_text(12, 78, "K0 1X  DISP/ENC", 1, C_WHITE);
     cc_draw_text(12, 96, "K0 2X  DEFAULT", 1, C_WHITE);

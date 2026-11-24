@@ -28,6 +28,16 @@ class UnsupportedCommand(ViaError):
     pass
 
 
+class UsbConnectionError(ViaError):
+    def __init__(self, message, *, present=None):
+        super().__init__(message)
+        self.present = present
+
+
+def _omnipad_interfaces():
+    return [(entry, usb_id) for usb_id in USB_IDS for entry in hid.enumerate(*usb_id)]
+
+
 def _acquire_usb_lease():
     """Prevent parallel OmniPad clients from mixing HID replies."""
     if os.name != "nt":
@@ -74,38 +84,50 @@ class OmniPad:
         self._lease = lease
         self.usb_id = usb_id
         self._device.set_nonblocking(0)
-        self.protocol = self._integer((0x01,), 1, 2)
+        self.protocol = self._integer((0x01,), 1, 2, timeout=DIAGNOSTIC_TIMEOUT_MS)
         try:
-            self.firmware = self._integer((0x02, 0x04), 2, 4)
+            self.firmware = self._integer((0x02, 0x04), 2, 4, timeout=DIAGNOSTIC_TIMEOUT_MS)
         except UnsupportedCommand:
             self.firmware = 0
-        self.layer_count = self._integer((0x11,), 1, 1)
+        self.layer_count = self._integer((0x11,), 1, 1, timeout=DIAGNOSTIC_TIMEOUT_MS)
         if self.protocol < 12 or not 1 <= self.layer_count <= 32:
             raise ViaError("Diese VIA-Firmware wird vom Editor nicht unterstützt.")
 
+    @staticmethod
+    def usb_present():
+        return bool(_omnipad_interfaces())
+
     @classmethod
     def connect(cls):
-        lease = _acquire_usb_lease()
-        device = None
         try:
-            interfaces = [(entry, (vid, pid)) for vid, pid in USB_IDS for entry in hid.enumerate(vid, pid)]
-            matches = {entry["path"]: usb_id for entry, usb_id in interfaces
-                       if (entry.get("usage_page"), entry.get("usage")) == (0xFF60, 0x61)}
-            if not matches:
-                if interfaces:
-                    raise ViaError("OmniPad über USB sichtbar · Die VIA-Schnittstelle fehlt.")
-                raise ViaError("Kein OmniPad am USB-Anschluss gefunden.")
-            if len(matches) > 1:
-                raise ViaError("Mehrere OmniPads gefunden. Bitte nur ein Pad anschließen.")
+            interfaces = _omnipad_interfaces()
+        except OSError as error:
+            raise UsbConnectionError(f"USB-Geräte konnten nicht gelesen werden. {error}") from error
+        if not interfaces:
+            raise UsbConnectionError("Kein OmniPad am USB-Anschluss gefunden.", present=False)
+        matches = {entry["path"]: usb_id for entry, usb_id in interfaces
+                   if (entry.get("usage_page"), entry.get("usage")) == (0xFF60, 0x61)}
+        if not matches:
+            raise UsbConnectionError("OmniPad über USB sichtbar. Die VIA-Schnittstelle fehlt.", present=True)
+        if len(matches) > 1:
+            raise UsbConnectionError("Mehrere OmniPads gefunden. Bitte nur ein Pad anschließen.", present=True)
+
+        lease = device = None
+        try:
+            lease = _acquire_usb_lease()
             path, usb_id = next(iter(matches.items()))
             device = hid.device()
             device.open_path(path)
             return cls(device, usb_id, lease)
-        except Exception:
-            if device is not None:
-                device.close()
-            if lease is not None:
-                lease.close()
+        except Exception as error:
+            try:
+                if device is not None:
+                    device.close()
+            finally:
+                if lease is not None:
+                    lease.close()
+            if isinstance(error, (OSError, ViaError)):
+                raise UsbConnectionError(str(error), present=True) from error
             raise
 
     def __enter__(self):
@@ -139,8 +161,8 @@ class OmniPad:
             raise ViaError("Ungültige Antwort vom OmniPad. Verbindung neu herstellen.")
         return reply
 
-    def _integer(self, request, offset, size):
-        return int.from_bytes(self._exchange(request)[offset:offset + size], "big")
+    def _integer(self, request, offset, size, *, timeout=900):
+        return int.from_bytes(self._exchange(request, timeout=timeout)[offset:offset + size], "big")
 
     def _read_buffer(self, command, size):
         data = bytearray()
