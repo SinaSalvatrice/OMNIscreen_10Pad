@@ -4,6 +4,11 @@ set -euo pipefail
 KEYBOARD="icst7789v"
 KEYMAP="default"
 
+if [[ "${MSYSTEM:-}" == "MINGW64" ]]; then
+    export PATH="/mingw64/bin:/usr/bin:/opt/qmk/bin:$PATH"
+fi
+echo "Preparing QMK build environment..."
+
 # Values passed from build_uf2.bat may still be Windows paths.
 to_msys_path() {
     local value="$1"
@@ -26,6 +31,7 @@ fi
 # a real home directory when this script is launched from a Windows runner.
 if [[ -n "${USERPROFILE:-}" ]]; then
     export HOME="$(cygpath -u "$USERPROFILE")"
+    export PATH="$HOME/bin:$PATH"
 fi
 
 # The QMK header must reflect the editable design spec before copying sources.
