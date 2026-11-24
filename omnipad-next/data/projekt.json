@@ -1,0 +1,1868 @@
+{
+  "schema": "omnipad-next-v1",
+  "active_layer": 1,
+  "layers": [
+    {
+      "id": "CCSTUDIO",
+      "name": "CCSTUDIO",
+      "groups": {
+        "matrix": {
+          "enabled": true,
+          "animation": "Wellenlauf",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        },
+        "keys": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "slider": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "encoder": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "k0": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "display": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "frame": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#C28B60",
+          "color_b": "#624C80",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        }
+      },
+      "led_overrides": {},
+      "actions": {
+        "K1": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K2": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K3": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K4": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K5": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K6": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K7": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K8": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K9": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K10": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "Encoder links": {
+          "1×": "Unbelegt"
+        },
+        "Encoder rechts": {
+          "1×": "Unbelegt"
+        },
+        "Encoder kurz": {
+          "1×": "Unbelegt"
+        },
+        "Regler": {
+          "1×": "Unbelegt"
+        },
+        "Zusatzbutton": {
+          "1×": "Unbelegt"
+        }
+      }
+    },
+    {
+      "id": "DEFAULT",
+      "name": "DEFAULT",
+      "groups": {
+        "matrix": {
+          "enabled": true,
+          "animation": "Wellenlauf",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        },
+        "keys": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "slider": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "encoder": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "k0": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "display": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "frame": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#C28B60",
+          "color_b": "#624C80",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        }
+      },
+      "led_overrides": {},
+      "actions": {
+        "K1": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K2": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K3": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K4": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K5": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K6": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K7": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K8": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K9": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K10": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "Encoder links": {
+          "1×": "Unbelegt"
+        },
+        "Encoder rechts": {
+          "1×": "Unbelegt"
+        },
+        "Encoder kurz": {
+          "1×": "Unbelegt"
+        },
+        "Regler": {
+          "1×": "Unbelegt"
+        },
+        "Zusatzbutton": {
+          "1×": "Unbelegt"
+        }
+      }
+    },
+    {
+      "id": "NAV",
+      "name": "NAV",
+      "groups": {
+        "matrix": {
+          "enabled": true,
+          "animation": "Wellenlauf",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        },
+        "keys": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "slider": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "encoder": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "k0": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "display": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "frame": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#C28B60",
+          "color_b": "#624C80",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        }
+      },
+      "led_overrides": {},
+      "actions": {
+        "K1": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K2": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K3": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K4": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K5": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K6": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K7": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K8": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K9": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K10": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "Encoder links": {
+          "1×": "Unbelegt"
+        },
+        "Encoder rechts": {
+          "1×": "Unbelegt"
+        },
+        "Encoder kurz": {
+          "1×": "Unbelegt"
+        },
+        "Regler": {
+          "1×": "Unbelegt"
+        },
+        "Zusatzbutton": {
+          "1×": "Unbelegt"
+        }
+      }
+    },
+    {
+      "id": "TEXT",
+      "name": "TEXT",
+      "groups": {
+        "matrix": {
+          "enabled": true,
+          "animation": "Wellenlauf",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        },
+        "keys": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "slider": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "encoder": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "k0": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "display": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "frame": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#C28B60",
+          "color_b": "#624C80",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        }
+      },
+      "led_overrides": {},
+      "actions": {
+        "K1": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K2": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K3": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K4": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K5": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K6": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K7": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K8": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K9": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K10": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "Encoder links": {
+          "1×": "Unbelegt"
+        },
+        "Encoder rechts": {
+          "1×": "Unbelegt"
+        },
+        "Encoder kurz": {
+          "1×": "Unbelegt"
+        },
+        "Regler": {
+          "1×": "Unbelegt"
+        },
+        "Zusatzbutton": {
+          "1×": "Unbelegt"
+        }
+      }
+    },
+    {
+      "id": "SHORTCUT",
+      "name": "SHORTCUT",
+      "groups": {
+        "matrix": {
+          "enabled": true,
+          "animation": "Wellenlauf",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        },
+        "keys": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "slider": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "encoder": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "k0": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "display": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "frame": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#C28B60",
+          "color_b": "#624C80",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        }
+      },
+      "led_overrides": {},
+      "actions": {
+        "K1": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K2": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K3": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K4": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K5": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K6": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K7": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K8": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K9": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K10": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "Encoder links": {
+          "1×": "Unbelegt"
+        },
+        "Encoder rechts": {
+          "1×": "Unbelegt"
+        },
+        "Encoder kurz": {
+          "1×": "Unbelegt"
+        },
+        "Regler": {
+          "1×": "Unbelegt"
+        },
+        "Zusatzbutton": {
+          "1×": "Unbelegt"
+        }
+      }
+    },
+    {
+      "id": "MACROS",
+      "name": "MACROS",
+      "groups": {
+        "matrix": {
+          "enabled": true,
+          "animation": "Wellenlauf",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        },
+        "keys": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "slider": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "encoder": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "k0": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "display": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "frame": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#C28B60",
+          "color_b": "#624C80",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        }
+      },
+      "led_overrides": {},
+      "actions": {
+        "K1": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K2": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K3": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K4": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K5": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K6": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K7": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K8": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K9": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K10": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "Encoder links": {
+          "1×": "Unbelegt"
+        },
+        "Encoder rechts": {
+          "1×": "Unbelegt"
+        },
+        "Encoder kurz": {
+          "1×": "Unbelegt"
+        },
+        "Regler": {
+          "1×": "Unbelegt"
+        },
+        "Zusatzbutton": {
+          "1×": "Unbelegt"
+        }
+      }
+    },
+    {
+      "id": "SETTINGS",
+      "name": "SETTINGS",
+      "groups": {
+        "matrix": {
+          "enabled": true,
+          "animation": "Wellenlauf",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        },
+        "keys": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "slider": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "encoder": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "k0": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "display": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "frame": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#C28B60",
+          "color_b": "#624C80",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        }
+      },
+      "led_overrides": {},
+      "actions": {
+        "K1": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K2": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K3": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K4": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K5": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K6": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K7": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K8": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K9": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K10": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "Encoder links": {
+          "1×": "Unbelegt"
+        },
+        "Encoder rechts": {
+          "1×": "Unbelegt"
+        },
+        "Encoder kurz": {
+          "1×": "Unbelegt"
+        },
+        "Regler": {
+          "1×": "Unbelegt"
+        },
+        "Zusatzbutton": {
+          "1×": "Unbelegt"
+        }
+      }
+    },
+    {
+      "id": "MEDIA",
+      "name": "MEDIA",
+      "groups": {
+        "matrix": {
+          "enabled": true,
+          "animation": "Wellenlauf",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        },
+        "keys": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "slider": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "encoder": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "k0": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "display": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#55A69D",
+          "color_b": "#283A53",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          },
+          "override": false
+        },
+        "frame": {
+          "enabled": true,
+          "animation": "Statisch",
+          "color_a": "#C28B60",
+          "color_b": "#624C80",
+          "brightness": 48,
+          "speed": 30,
+          "reverse": false,
+          "reactive": {
+            "enabled": false,
+            "triggers": [
+              "Tastendruck"
+            ],
+            "effect": "Lichtimpuls",
+            "color": "#FFE7A8",
+            "blend": "Überlagern",
+            "duration": 400
+          }
+        }
+      },
+      "led_overrides": {},
+      "actions": {
+        "K1": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K2": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K3": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K4": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K5": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K6": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K7": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K8": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K9": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "K10": {
+          "1×": "Unbelegt",
+          "2×": "Unbelegt",
+          "3×": "Unbelegt",
+          "4×": "Unbelegt",
+          "Halten": "Unbelegt"
+        },
+        "Encoder links": {
+          "1×": "Unbelegt"
+        },
+        "Encoder rechts": {
+          "1×": "Unbelegt"
+        },
+        "Encoder kurz": {
+          "1×": "Unbelegt"
+        },
+        "Regler": {
+          "1×": "Unbelegt"
+        },
+        "Zusatzbutton": {
+          "1×": "Unbelegt"
+        }
+      }
+    }
+  ],
+  "display_templates": {
+    "active-layer": "",
+    "layer-list": "",
+    "matrix-tester": "",
+    "settings": ""
+  }
+}
