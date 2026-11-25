@@ -10,8 +10,13 @@ from tkinter import colorchooser, filedialog, messagebox, ttk
 from xml.etree import ElementTree
 
 from device import LiveUsb
+from key_actions import (BUILTINS, DEFAULT_ACTION, FUNCTIONS, KEY_MODES, LEGACY_EMPTY,
+                         LETTERS, LIBRARY_PREFIX, MEDIA, MOUSE, NAVIGATION, NO_ACTION,
+                         NUMBERS, SHORTCUTS)
+from library_editor import LibraryEditor
+from pad_profile import KEY_NAMES, ROTATION_ACTIONS, SLIDER_ACTIONS, inferred_mode, locked_key
 from protocol import prepare_lighting, ProtocolError
-from model import (ACTIONS, BASE_GROUPS, COLOR_MODES, EFFECTS, GESTURES,
+from model import (BASE_GROUPS, COLOR_MODES, EFFECTS, GESTURES,
                    LAYER_DATA, LAYER_IDS, NAMES, PROTECTED,
                    REACTION_PALETTES, ROOT, SCREENS, TRIGGERS, load_project,
                    new_project, save_project)
@@ -87,6 +92,7 @@ class App:
         self.led_tab = 0
         self.selected_key = "K1"
         self.selected_gesture = "1×"
+        self.selected_entry = None
         self.events: list[Pulse] = []
         self.reaction_hue = 0
         self.started = time.monotonic()
@@ -145,7 +151,7 @@ class App:
         left.pack_propagate(False)
         self.text(left, "OmniPad", size=19, bold=True).pack(anchor="w", pady=(12, 4))
         self.text(left, "NEXT  /  LOKAL", color=ACCENT, size=9).pack(anchor="w", pady=(0, 30))
-        for title in ("Gerät", "LEDs", "Belegung", "Display"):
+        for title in ("Gerät", "LEDs", "Belegung", "Snippets & Makros", "Display"):
             btn = tk.Button(left, text=title, anchor="w", bd=0, relief="flat",
                             font=("Segoe UI", 12), padx=16, pady=13,
                             command=lambda v=title: self.show(v))
@@ -231,6 +237,8 @@ class App:
             self.build_led_page()
         elif self.view == "Belegung":
             self.build_keys_page()
+        elif self.view == "Snippets & Makros":
+            self.build_library_page()
         elif self.view == "Display":
             self.build_display_page()
         else:
@@ -322,7 +330,8 @@ class App:
         right = self.card(area)
         right.grid(row=0, column=1, sticky="nsew")
         self.upload_button = ttk.Button(right, text="LEDs auf Pad speichern",
-                                        command=self.upload_lighting)
+                                        command=self.upload_lighting,
+                                        state="disabled" if self.usb_busy else "normal")
         self.upload_button.pack(fill="x", pady=(0, 10))
         self.text(right, "LED-Bereich", color=MUTED, size=10).pack(anchor="w")
         self.zone_option = ttk.Combobox(right, state="readonly",
@@ -519,11 +528,27 @@ class App:
             "Firmware-Tasten, Menüs und App-Profil bleiben unverändert. Fortfahren?",
             parent=self.root):
             return
+        self.start_upload("LED-Einstellungen")
+
+    def upload_keys(self):
+        if self.usb_busy:
+            return
+        if messagebox.askyesno(
+            "Belegung auf Pad speichern",
+            "Eigene Belegungen und zugewiesene Snippets/Makros auf das Pad übertragen?\n"
+            "Zum Verwenden am Pad unter Settings → Config Source → App Profile wählen.",
+            parent=self.root,
+        ):
+            self.start_upload("Tastenbelegung", assignments=True)
+
+    def start_upload(self, title, *, assignments=False):
         self.usb_busy = True
+        self.upload_title = title
         self.live_status.set("Live-Vorschau pausiert während der Übertragung")
-        self.status.set("LED-Übertragung gestartet · prüfe Firmware-Version ...")
+        self.status.set(f"{title} wird übertragen …")
         self.upload_button.configure(state="disabled")
-        self.usb_future = self.usb_worker.submit(self.usb.upload, copy.deepcopy(self.project))
+        self.usb_future = self.usb_worker.submit(
+            self.usb.upload, copy.deepcopy(self.project), assignments=assignments)
 
     def update_live_inputs(self, info, now):
         self.device_status.set(f"{info.status}\n{info.detail}" if info.detail else info.status)
@@ -567,8 +592,8 @@ class App:
                 try:
                     self.status.set(future.result())
                 except (ImportError, OSError, RuntimeError, ValueError) as exc:
-                    self.status.set("LED-Übertragung fehlgeschlagen")
-                    messagebox.showerror("LED-Übertragung", str(exc), parent=self.root)
+                    self.status.set("Übertragung fehlgeschlagen")
+                    messagebox.showerror(self.upload_title, str(exc), parent=self.root)
             else:
                 self.update_live_inputs(future.result(), now)
         colors = self.update_led_colors() if self.view == "LEDs" else None
@@ -620,8 +645,7 @@ class App:
         self.text(left, "Weitere Eingaben", size=13, bold=True).pack(anchor="w", pady=(7, 6))
         extra = tk.Frame(left, bg=PANEL)
         extra.pack(fill="x")
-        for index, name in enumerate(("Encoder links", "Encoder rechts", "Encoder kurz",
-                                      "Regler", "Zusatzbutton", "K0")):
+        for index, name in enumerate((*ROTATION_ACTIONS, "Encoder kurz", *SLIDER_ACTIONS, "K0")):
             button = tk.Button(extra, text=name, font=("Segoe UI", 9),
                                bg=ACCENT if self.selected_key == name else CARD,
                                fg=BG if self.selected_key == name else TEXT,
@@ -632,12 +656,18 @@ class App:
             extra.grid_columnconfigure(index % 3, weight=1)
         right = self.card(content)
         right.grid(row=0, column=1, sticky="nsew")
-        self.key_panel = right
+        self.upload_button = ttk.Button(
+            right, text="Belegung auf Pad speichern", command=self.upload_keys,
+            state="disabled" if self.usb_busy else "normal")
+        self.upload_button.pack(fill="x", pady=(0, 9))
+        self.key_panel = tk.Frame(right, bg=PANEL)
+        self.key_panel.pack(fill="both", expand=True)
         self.update_key_panel()
         self.update_key_highlights(time.monotonic() - self.started)
 
     def select_key(self, key):
         self.selected_key = key
+        self.selected_gesture = GESTURES[0]
         self.build_page()
 
     def update_key_panel(self):
@@ -645,7 +675,7 @@ class App:
         for child in body.winfo_children():
             child.destroy()
         key = self.selected_key
-        self.frame_header(body, key, "Nur App-Profil · die Firmware wird nicht geändert")
+        self.frame_header(body, key)
         if key == "K0":
             for name, action in PROTECTED.items():
                 if name.startswith("K0"):
@@ -657,35 +687,74 @@ class App:
         if key == "Encoder kurz":
             self.text(body, "Encoder lang → Layerliste [GESPERRT]",
                       color=ACCENT).pack(anchor="w", pady=8)
-        if key.startswith("K") and key[1:].isdigit():
+        if key in KEY_NAMES:
             index = int(key[1:]) - 1
             source = LAYER_DATA["layers"][self.layer]["keys"][index]["tap"]
-            self.text(body, f"Firmware (nur Anzeige): {source}",
+            self.text(body, f"Werkseinstellung: {source}",
                       color=MUTED, wrap=320).pack(anchor="w", pady=(8, 15))
-        self.text(body, "Auslöser", color=MUTED, size=10).pack(anchor="w")
-        gestures = GESTURES if key.startswith("K") and key[1:].isdigit() else ("1×",)
+            if locked_key(self.layer, key):
+                self.text(body, "Diese Taste ist auf diesem Layer fest belegt.",
+                          color=ACCENT).pack(anchor="w")
+                return
+        target = self.edit_target()
+        slots = target["actions"].get(key, {})
+        gestures = GESTURES[:1]
+        mode = "Direkt"
+        if key in KEY_NAMES:
+            self.text(body, "Tastenmodus", color=MUTED, size=10).pack(anchor="w")
+            mode = target.get("key_modes", {}).get(key, inferred_mode(slots))
+            mode_picker = ttk.Combobox(body, values=KEY_MODES, state="readonly")
+            mode_picker.set(mode)
+            mode_picker.pack(fill="x", pady=(3, 10))
+            mode_picker.bind("<<ComboboxSelected>>", lambda _: self.change_key_mode(mode_picker.get()))
+            gestures = GESTURES[:(1, 5, 4)[KEY_MODES.index(mode)]]
         if self.selected_gesture not in gestures:
             self.selected_gesture = "1×"
-        gesture = tk.Frame(body, bg=PANEL)
-        gesture.pack(fill="x", pady=(5, 13))
-        for g in gestures:
-            btn = tk.Button(gesture, text=g, font=("Segoe UI", 10), bd=0,
-                            bg=ACCENT if self.selected_gesture == g else CARD,
-                            fg=BG if self.selected_gesture == g else TEXT,
-                            padx=9, pady=8,
-                            command=lambda v=g: self.select_gesture(v))
-            btn.pack(side="left", padx=(0, 3))
-        self.text(body, "Aktion im App-Profil", color=MUTED, size=10).pack(
-            anchor="w", pady=(6, 5))
-        current = self.edit_target()["actions"][key][self.selected_gesture]
-        self.key_action = tk.StringVar(value=current)
-        picker = ttk.Combobox(body, values=ACTIONS, textvariable=self.key_action,
-                              state="readonly")
+        if len(gestures) > 1:
+            hint = ("Je Druck der nächste belegte Schritt." if mode == "Durchschalten" else
+                    "Eine eigene Aktion für jede Anzahl von Tipps oder für Halten.")
+            self.text(body, hint, color=MUTED, size=9).pack(anchor="w")
+            gesture = tk.Frame(body, bg=PANEL)
+            gesture.pack(fill="x", pady=(5, 13))
+            for index, g in enumerate(gestures):
+                tk.Button(gesture, text=f"Schritt {index + 1}" if mode == "Durchschalten" else g,
+                          font=("Segoe UI", 10), bd=0,
+                          bg=ACCENT if self.selected_gesture == g else CARD,
+                          fg=BG if self.selected_gesture == g else TEXT,
+                          padx=9, pady=8, command=lambda v=g: self.select_gesture(v)).pack(
+                              side="left", padx=(0, 3))
+        current = slots.get(self.selected_gesture, LEGACY_EMPTY)
+        if current == LEGACY_EMPTY:
+            current = DEFAULT_ACTION if self.selected_gesture == "1×" and mode != "Durchschalten" else NO_ACTION
+        self.action_options = {name: name for name in BUILTINS}
+        categories = {"Tasten": (*LETTERS, *NUMBERS, *FUNCTIONS, *NAVIGATION),
+                      "Medien": tuple(MEDIA), "Shortcuts": tuple(SHORTCUTS), "Maus": tuple(MOUSE),
+                      "Makros": [], "Text-Snippets": []}
+        for index, entry in enumerate(self.project.get("library", []), 1):
+            category = "Text-Snippets" if entry["kind"] == "text" else "Makros"
+            display = f"{index}. {entry['name']}"
+            categories[category].append(display)
+            self.action_options[display] = LIBRARY_PREFIX + entry["id"]
+        selected = next((label for label, value in self.action_options.items() if value == current), DEFAULT_ACTION)
+        category = next((name for name, options in categories.items() if selected in options), "Tasten")
+        self.text(body, "Aktion", color=MUTED, size=10).pack(anchor="w")
+        action_category = ttk.Combobox(body, values=tuple(categories), state="readonly")
+        action_category.set(category)
+        action_category.pack(fill="x", pady=(3, 4))
+        self.key_action = tk.StringVar(value=selected)
+        picker = ttk.Combobox(body, textvariable=self.key_action, state="readonly")
+        def filter_choices(_=None):
+            picker.configure(values=(DEFAULT_ACTION, NO_ACTION, *categories[action_category.get()]))
+        filter_choices()
+        action_category.bind("<<ComboboxSelected>>", filter_choices)
         picker.pack(fill="x")
         picker.bind("<<ComboboxSelected>>", self.write_action)
-        self.text(body, "Tasten dürfen zusätzliche Mehrfachaktionen besitzen. "
-                  "Die Firmware-Belegung bleibt unangetastet.",
-                  color=MUTED, wrap=320).pack(anchor="w", pady=(24, 0))
+
+    def change_key_mode(self, mode):
+        self.edit_target().setdefault("key_modes", {})[self.selected_key] = mode
+        self.selected_gesture = GESTURES[0]
+        self.mark_changed()
+        self.update_key_panel()
 
     def select_gesture(self, gesture):
         self.selected_gesture = gesture
@@ -693,10 +762,79 @@ class App:
 
     def write_action(self, _event=None):
         key = self.selected_key
-        if key == "K0":
+        if locked_key(self.layer, key):
             return
-        self.edit_target()["actions"][key][self.selected_gesture] = self.key_action.get()
+        self.edit_target()["actions"].setdefault(key, {})[self.selected_gesture] = (
+            self.action_options[self.key_action.get()])
         self.mark_changed()
+
+    def build_library_page(self):
+        panel = self.card(self.content)
+        panel.pack(fill="both", expand=True)
+        self.frame_header(panel, "Snippetbibliothek",
+                          "Textbausteine und Tastensequenzen stehen in der Aktionsauswahl bereit.")
+        tools = tk.Frame(panel, bg=PANEL)
+        tools.pack(fill="x", pady=(0, 10))
+        for text, command in (
+            ("Text-Snippet anlegen", lambda: self.edit_library_entry("text")),
+            ("Makro aufnehmen", lambda: self.edit_library_entry("macro")),
+            ("Bearbeiten", self.edit_library_entry),
+            ("Löschen", self.delete_library_entry),
+        ):
+            ttk.Button(tools, text=text, command=command).pack(side="left", padx=(0, 6))
+        rows = tk.Frame(panel, bg=PANEL)
+        rows.pack(fill="both", expand=True)
+        self.library_list = ttk.Treeview(rows, columns=("kind",), selectmode="browse")
+        self.library_list.heading("#0", text="Name")
+        self.library_list.heading("kind", text="Typ")
+        self.library_list.column("kind", width=160, stretch=False)
+        scrollbar = ttk.Scrollbar(rows, command=self.library_list.yview)
+        self.library_list.configure(yscrollcommand=scrollbar.set)
+        self.library_list.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        for entry in self.project.get("library", []):
+            self.library_list.insert("", "end", iid=entry["id"], text=entry["name"],
+                                     values=("Text-Snippet" if entry["kind"] == "text" else "Makro",))
+        if self.selected_entry and self.library_list.exists(self.selected_entry):
+            self.library_list.selection_set(self.selected_entry)
+        self.library_list.bind("<Double-Button-1>", lambda _: self.edit_library_entry())
+
+    def get_library_entry(self):
+        selected = self.library_list.selection()
+        return next((item for item in self.project.get("library", []) if item["id"] in selected), None)
+
+    def edit_library_entry(self, kind=None):
+        entry = None if kind else self.get_library_entry()
+        if kind or entry:
+            LibraryEditor(self, kind or entry["kind"], self.store_library_entry, entry)
+
+    def store_library_entry(self, entry):
+        entries = self.project.setdefault("library", [])
+        for index, old in enumerate(entries):
+            if old["id"] == entry["id"]:
+                entries[index] = entry
+                break
+        else:
+            entries.append(entry)
+        self.selected_entry = entry["id"]
+        self.mark_changed()
+        self.build_page()
+
+    def delete_library_entry(self):
+        entry = self.get_library_entry()
+        if entry is None:
+            return
+        token = LIBRARY_PREFIX + entry["id"]
+        if any(token in slots.values() for layer in self.project["layers"]
+               for slots in layer["actions"].values()):
+            messagebox.showinfo("Snippetbibliothek", "Entferne zuerst die zugehörigen Belegungen.",
+                                parent=self.root)
+            return
+        if messagebox.askyesno("Snippetbibliothek", f"„{entry['name']}“ löschen?", parent=self.root):
+            self.project["library"].remove(entry)
+            self.selected_entry = None
+            self.mark_changed()
+            self.build_page()
 
     def build_display_page(self):
         self.screen = getattr(self, "screen", SCREENS[0])

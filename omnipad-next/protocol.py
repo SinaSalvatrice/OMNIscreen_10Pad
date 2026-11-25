@@ -11,6 +11,7 @@ import struct
 from dataclasses import dataclass
 
 from hid_backend import load_hidapi
+from pad_profile import PROFILE_SIZE, profile_with_assignments
 from model import (BASE_GROUPS, COLOR_MODES, EFFECTS, MATRIX_TRIGGER_ZONES,
                    REACTION_PALETTES, SUBZONES, TRIGGERS, ZONE_LEDS, group_reaction)
 
@@ -186,6 +187,35 @@ class Usb:
 
     def stop_preview(self):
         self.exchange((0x07, 0, 0x7E, 255), timeout=240)
+
+    def read_key_profile(self):
+        data = bytearray()
+        for offset in range(0, PROFILE_SIZE, 25):
+            size = min(25, PROFILE_SIZE - offset)
+            reply = self.exchange(struct.pack("<3BHB", 0x08, 0, 0x72, offset, size))
+            data.extend(reply[6:6 + size])
+        return bytes(data)
+
+    def upload_assignments(self, project):
+        info = self.exchange((0x08, 0, 0x71))
+        if info[3:7] != b"OMP2" or struct.unpack_from("<H", info, 9)[0] != PROFILE_SIZE:
+            raise UnsupportedFirmware("Die Firmware unterstützt dieses Tastenprofil nicht.")
+        generation = struct.unpack_from("<I", info, 11)[0]
+        current = self.read_key_profile() if info[7] else None
+        payload = profile_with_assignments(project, current, encoder_push=bool(info[16] & 32))
+        if payload == current:
+            return "Belegung auf dem Pad ist bereits aktuell."
+        checksum = 2166136261
+        for value in payload:
+            checksum = ((checksum ^ value) * 16777619) & 0xFFFFFFFF
+        self.exchange(struct.pack("<3BII", 0x07, 0, 0x73, checksum, generation))
+        for offset in range(0, len(payload), 25):
+            chunk = payload[offset:offset + 25]
+            self.exchange(struct.pack("<3BHB", 0x07, 0, 0x74, offset, len(chunk)) + chunk)
+        self.exchange((0x07, 0, 0x75), timeout=12000)
+        if self.read_key_profile() != payload:
+            raise ProtocolError("Die zurückgelesene Belegung stimmt nicht mit dem Projekt überein.")
+        return "Belegung auf dem Pad gespeichert. Bedienmodus am Pad prüfen."
 
     def read_tints(self):
         output = bytearray()

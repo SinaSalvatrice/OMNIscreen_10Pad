@@ -1,4 +1,4 @@
-// Versioned wire format shared with desktop-app/profile.py.
+// Versioned firmware HID profile format; desktop application is optional.
 #pragma once
 #include "eeprom.h"
 #include <string.h>
@@ -15,6 +15,12 @@
 #define OMP_EFFECT_COUNT 13u
 #define OMP_LIGHT_REACTIVE 4u
 #define OMP_REACTIVE_MS 450u
+// Lighting data shares the existing 651-byte EEPROM settings.
+#define CC_NEXT_TINT_BYTES 96u
+#define CC_NEXT_PALETTE_BYTES 16u
+#define CC_NEXT_LEVEL_BYTES 32u
+#define CC_NEXT_COLOR_BYTES (CC_NEXT_TINT_BYTES + CC_NEXT_PALETTE_BYTES)
+#define CC_NEXT_TINT_OFFSET (48u * sizeof(omp_zone_t))
 
 enum {
     OMP_ZONE_KEYS, OMP_ZONE_SLIDER, OMP_ZONE_ENCODER, OMP_ZONE_K0, OMP_ZONE_DISPLAY,
@@ -117,7 +123,8 @@ static uint16_t omp_preview_at;
 
 static bool omp_zone_valid(const omp_zone_t *zone) {
     return zone->effect < OMP_EFFECT_COUNT && zone->brightness <= RGBLIGHT_LIMIT_VAL &&
-           zone->flags <= 7 && zone->triggers <= 15 && zone->duration;
+           ((zone->flags >> 3) & 3u) < 3u &&
+           (zone->flags >> 5) <= 4u && zone->triggers <= 127 && zone->duration;
 }
 
 static uint32_t omp_checksum(const void *data, uint16_t size) {

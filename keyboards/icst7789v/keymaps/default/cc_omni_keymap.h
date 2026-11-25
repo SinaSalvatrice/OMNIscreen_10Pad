@@ -2,6 +2,7 @@
 // Included from cc_controls.h after cc_runtime.h and the RGB/OMP modules.
 #pragma once
 #include "mousekey.h"
+#include "cc_panel_lighting.h"
 // Seven built-in slots per bank work without a configured VIA/OMP profile.
 
 #define CC_MEDIA_LAYER 7
@@ -46,7 +47,7 @@ static void cc_ui_activity(void) {
     cc_activity_at = timer_read32();
     if (!cc_backlight_awake) {
         cc_backlight_awake = true;
-        gpio_write_pin_high(LCD_BL);
+        cc_display_backlight_apply(true);
     }
 }
 static void cc_ui_config_load(void) {
@@ -75,7 +76,7 @@ static void cc_ui_timeout_tick(void) {
     if (timeout && cc_backlight_awake &&
         timer_elapsed32(cc_activity_at) >= timeout * 1000u) {
         cc_backlight_awake = false;
-        gpio_write_pin_low(LCD_BL);
+        cc_display_backlight_apply(false);
     }
 }
 

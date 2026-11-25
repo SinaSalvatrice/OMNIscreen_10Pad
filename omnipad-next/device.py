@@ -60,11 +60,11 @@ class LiveUsb:
             self.last_frame = None
             self.connection.stop_preview()
 
-    def upload(self, project):
+    def upload(self, project, *, assignments=False):
         self.close()
         connection = Usb.connect()
         try:
-            return connection.upload(project)
+            return connection.upload_assignments(project) if assignments else connection.upload(project)
         finally:
             connection.close()
             self.try_after = 0

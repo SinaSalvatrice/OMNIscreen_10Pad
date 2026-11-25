@@ -31,6 +31,7 @@ static bool cc_use_app_profile = false; // persisted config source
 static bool cc_visual_profile_available = false; // templates work in firmware mode
 static bool cc_rgb_master_enabled = true; // persisted RGB power
 static void cc_internal_press(uint8_t index);
+static void cc_next_trigger(uint8_t mask);
 static void cc_user_layer_change(uint8_t from, uint8_t to);
 static bool cc_help_view = false;
 static bool cc_color_view = false;
@@ -127,8 +128,10 @@ static void cc_activate_layer(uint8_t layer_index) {
         cc_user_layer_change(cc_active, layer_index);
         cc_previous = cc_active;
     }
+    const bool changed_layer = cc_active != layer_index;
     cc_active = layer_index;
     cc_preview = layer_index;
+    if (changed_layer) cc_next_trigger(32u); // Layerwechsel, including menu selection
     cc_home_view = false; // The active layer map IS the home view.
     cc_display_mode = false;
     cc_screen_selection = CC_SCREEN_DETAILS;
@@ -245,12 +248,9 @@ static void cc_layer_key_tile(uint8_t i, uint8_t selected, const cc_layer_desc_t
     cc_draw_text(x + 5, y + (h / 2u), short_label, 1, C_WHITE);
 }
 
-static bool cc_layer_screen_invalid = true;
-
 // Renderers for distinct protected system screens. The settings/tester
 // controls themselves remain firmware-owned; themes never change their actions.
 
-static bool cc_layer_list_invalid = true;
 static uint8_t cc_layer_list_last_selection = 255;
 static uint8_t cc_layer_list_last_active = 255;
 static void cc_layer_index_row(uint8_t i, uint16_t accent) {
@@ -263,14 +263,13 @@ static void cc_layer_index_row(uint8_t i, uint16_t accent) {
     const char *name = omp_enabled ? omp_profile.layers[i].name : cc_layers[i].name;
     cc_draw_text(x + 6, y + 7, name, 1, C_WHITE);
 }
-static void cc_layer_index_screen(void) {
+static void cc_layer_index_screen(bool full_redraw) {
     const uint16_t accent = cc_view_accent();
-    if (cc_layer_list_invalid || cc_active != cc_layer_list_last_active) {
+    if (full_redraw || cc_active != cc_layer_list_last_active) {
         cc_background("K3 UP  K7 DOWN  K9 OPEN  K5 BACK", C_WHITE);
         cc_draw_text(10, 36, "LAYER LIST", 2, accent);
         for (uint8_t i = 0; i < omp_layer_count() && i < OMP_LAYERS; ++i)
             cc_layer_index_row(i, accent);
-        cc_layer_list_invalid = false;
     } else if (cc_preview != cc_layer_list_last_selection) {
         cc_layer_index_row(cc_layer_list_last_selection, accent);
         cc_layer_index_row(cc_preview, accent);
@@ -291,14 +290,14 @@ static void cc_navigation_screen(void) {
     cc_draw_text(26, 154, "TURN SELECT  PUSH ENTER", 1, C_WHITE);
 }
 
-static void cc_layer_screen(void) {
+static void cc_layer_screen(bool full_redraw) {
     static uint8_t drawn_layer, drawn_active, drawn_key = UINT8_MAX;
     static bool drawn_display_mode;
     static uint32_t drawn_generation;
     const uint8_t selected = cc_preview;
     const cc_layer_desc_t *desc = &cc_layers[selected < CC_LAYER_COUNT ? selected : 0];
     const uint16_t accent = cc_visual_profile_available ? cc_view_accent() : desc->accent_rgb565;
-    if (cc_layer_screen_invalid || selected != drawn_layer || cc_active != drawn_active ||
+    if (full_redraw || selected != drawn_layer || cc_active != drawn_active ||
         cc_display_mode != drawn_display_mode || omp_generation != drawn_generation) {
         cc_background(cc_default_footer, cc_view_accent());
         lcd_fill(7, 33, 109, 171, 0x2186);
@@ -312,7 +311,6 @@ static void cc_layer_screen(void) {
         drawn_active = cc_active;
         drawn_display_mode = cc_display_mode;
         drawn_generation = omp_generation;
-        cc_layer_screen_invalid = false;
     } else if (cc_last_key != drawn_key) {
         if (drawn_key < CC_KEY_COUNT) cc_layer_key_tile(drawn_key, selected, desc, accent);
         if (cc_last_key < CC_KEY_COUNT) cc_layer_key_tile(cc_last_key, selected, desc, accent);
@@ -650,11 +648,11 @@ static bool cc_custom_screen_selected(void) {
 
 static void cc_redraw(void) {
     if (!panel_ready) return;
-    if (cc_screen_selection != CC_SCREEN_LAYERS || cc_internal_mode || cc_matrix_test_view)
-        cc_layer_list_invalid = true;
+    // Partial updates require the previous frame to belong to the same renderer.
+    enum cc_cached_screen { CC_SCREEN_UNCACHED, CC_SCREEN_DRAWN_LIST, CC_SCREEN_DRAWN_MAP };
+    static enum cc_cached_screen drawn_screen = CC_SCREEN_UNCACHED;
+    enum cc_cached_screen next_screen = CC_SCREEN_UNCACHED;
     if (!cc_internal_mode) cc_internal_drawn_mode = 0;
-    if (cc_internal_mode || cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view || cc_eeprom_confirm ||
-        cc_reset_state == CC_RESET_HOLDING || cc_custom_screen_selected()) cc_layer_screen_invalid = true;
     if (cc_matrix_test_view || cc_color_view || cc_help_view || cc_menu_view) omp_screen_invalid = true;
     if (cc_reset_state == CC_RESET_HOLDING) {
         omp_screen_invalid = true;
@@ -677,10 +675,17 @@ static void cc_redraw(void) {
     else if (cc_help_view) cc_help_screen();
     else if (cc_menu_view) cc_menu_screen();
     else if (cc_custom_screen_selected()) omp_screen_render();
-    else if (cc_home_view) cc_layer_screen();
-    else if (cc_screen_selection == CC_SCREEN_LAYERS) cc_layer_index_screen();
-    else if (cc_screen_selection == CC_SCREEN_NAV) cc_navigation_screen();
-    else cc_layer_screen();
+    else if (!cc_home_view && cc_screen_selection == CC_SCREEN_LAYERS) {
+        cc_layer_index_screen(drawn_screen != CC_SCREEN_DRAWN_LIST);
+        next_screen = CC_SCREEN_DRAWN_LIST;
+    } else if (!cc_home_view && cc_screen_selection == CC_SCREEN_NAV) {
+        cc_navigation_screen();
+    } else {
+        cc_layer_screen(drawn_screen != CC_SCREEN_DRAWN_MAP);
+        next_screen = CC_SCREEN_DRAWN_MAP;
+    }
+    if (next_screen != CC_SCREEN_DRAWN_MAP) cc_last_key = UINT8_MAX;
+    drawn_screen = next_screen;
     // Only non-safety views permit user-positioned decorations. Menu and
     // tester are deliberately protected against obscured controls.
     if (omp_enabled && omp_profile.screen.enabled && !cc_custom_screen_selected() &&

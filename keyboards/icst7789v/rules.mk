@@ -14,3 +14,4 @@ ANALOG_DRIVER_REQUIRED = yes
 # Optional external WS2812/SK6812 on GP29:
 RGBLIGHT_ENABLE = yes
 WS2812_DRIVER = vendor
+LDFLAGS += -Wl,--wrap=ws2812_set_color,--wrap=ws2812_set_color_all,--wrap=ws2812_flush

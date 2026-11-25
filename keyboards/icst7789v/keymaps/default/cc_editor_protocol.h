@@ -109,7 +109,7 @@ static bool omp_command(uint8_t *data, uint8_t length) {
         data[10] = sizeof(omp_profile) >> 8;
         memcpy(&data[11], &omp_generation, 4);
         data[15] = CC_PCF8575_MATRIX;
-        data[16] = 31; // LED preview, device actions, screens, matrix zones, simplified lighting.
+        data[16] = 63; // Previous capabilities plus app profile action on encoder press.
         return true;
     }
     if (id == 0x72 && get && cc_visual_profile_available) {

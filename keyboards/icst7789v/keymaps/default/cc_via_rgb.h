@@ -7,6 +7,7 @@
 #include "rgblight.h"
 #include "rgblight_drivers.h"
 #include "cc_lighting_effects.h"
+#include "cc_live.h"
 
 #define CC_FRAME_EFFECT_SOLID       0
 #define CC_FRAME_EFFECT_ALTERNATE   1
@@ -41,6 +42,8 @@ typedef struct __attribute__((packed)) {
 } cc_rgb_settings_t;
 
 _Static_assert(sizeof(omp_zone_t) == 10, "Zone storage format");
+_Static_assert(CC_NEXT_TINT_OFFSET + CC_NEXT_COLOR_BYTES <=
+               sizeof(((cc_rgb_settings_t *)0)->matrix_zones), "Lighting palette storage");
 _Static_assert(sizeof(cc_rgb_settings_t) == EECONFIG_USER_DATA_SIZE, "RGB settings / EEPROM size mismatch");
 _Static_assert(CC_RGB_MAIN_LED_COUNT + CC_RGB_FRAME_LED_COUNT == RGBLIGHT_LED_COUNT, "Matrix plus Frame must total 73");
 
@@ -83,12 +86,47 @@ static void cc_matrix_zones_reset(void) {
         }
     }
 }
-static bool cc_matrix_zones_valid(void) {
-    if (memcmp(cc_rgb.zone_magic, "MZ01", 4)) return false;
-    for (uint8_t layer = 0; layer < OMP_LAYERS; ++layer)
-        for (uint8_t zone = 0; zone < OMP_MATRIX_ZONE_COUNT; ++zone)
-            if (!omp_zone_valid(&cc_rgb.matrix_zones[layer][zone])) return false;
+static uint8_t cc_matrix_version(void) {
+    if (!memcmp(cc_rgb.zone_magic, "MZ04", 4)) return 4;
+    if (!memcmp(cc_rgb.zone_magic, "MZ03", 4)) return 3;
+    if (!memcmp(cc_rgb.zone_magic, "MZ02", 4)) return 2;
+    return !memcmp(cc_rgb.zone_magic, "MZ01", 4);
+}
+
+static bool cc_matrix_zone_record_valid(const omp_zone_t *zone, uint8_t version) {
+    if (version >= 3) {
+        return (zone->effect & 15u) < 13u && (zone->effect >> 4) < 9u &&
+               zone->brightness <= RGBLIGHT_LIMIT_VAL && ((zone->flags >> 3) & 3u) < 3u &&
+               zone->triggers <= 63u && zone->duration;
+    }
+    return omp_zone_valid(zone) && (version < 2 || zone->effect <= 5u);
+}
+
+static bool cc_matrix_zone_data_valid(
+    const omp_zone_t zones[OMP_LAYERS][OMP_MATRIX_ZONE_COUNT], uint8_t version) {
+    if (!version) return false;
+    const uint8_t count = version >= 2 ? 48u : OMP_LAYERS * OMP_MATRIX_ZONE_COUNT;
+    for (uint8_t i = 0; i < count; ++i) {
+        if (!cc_matrix_zone_record_valid(
+                &zones[i / OMP_MATRIX_ZONE_COUNT][i % OMP_MATRIX_ZONE_COUNT], version))
+            return false;
+    }
+    if (version >= 3) {
+        const uint8_t *colors = (const uint8_t *)zones + CC_NEXT_TINT_OFFSET;
+        const uint8_t *palettes = colors + CC_NEXT_TINT_BYTES;
+        const uint8_t palette_count = version >= 4 ? CC_NEXT_PALETTE_BYTES : 8u;
+        for (uint8_t i = 0; i < palette_count; ++i)
+            if (palettes[i] > 3u) return false;
+        if (version >= 4) {
+            for (uint8_t i = 0; i < CC_NEXT_LEVEL_BYTES; ++i)
+                if (colors[i] > 100u) return false;
+        }
+    }
     return true;
+}
+
+static bool cc_matrix_zones_valid(void) {
+    return cc_matrix_zone_data_valid(cc_rgb.matrix_zones, cc_matrix_version());
 }
 static bool cc_main_dirty = true;
 static bool cc_frame_dirty = true;
@@ -310,7 +348,9 @@ static void cc_stage_matrix_zones(void) {
 // VIA channel 0 preserves the previous four custom main-palette IDs (1..4).
 // New Frame values use 5..11, so existing saved VIA definitions remain valid.
 void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
-    // 0x7A: read/write matrix zone or 15 map entries. 0x7B: persist.
+    if (cc_live_command(data, length)) return;
+    // 0x7A: read/write matrix and frame zones; 0x7D: color settings;
+    // 0x7B: atomic staging commit. Original MZ01 remains readable.
     if (length == 32 && data[1] == 0 &&
         (data[0] == id_custom_get_value || data[0] == id_custom_set_value)) {
         bool get = data[0] == id_custom_get_value;
@@ -320,7 +360,7 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
                 if (get) { memcpy(&data[5], zone, sizeof(*zone)); return; }
                 omp_zone_t candidate;
                 memcpy(&candidate, &data[5], sizeof(candidate));
-                if (omp_zone_valid(&candidate)) {
+                if (omp_zone_valid(&candidate) || cc_matrix_zone_record_valid(&candidate, 3)) {
                     cc_stage_matrix_zones();
                     cc_pending_matrix_zones[data[3]][data[4]] = candidate;
                     return;
@@ -341,6 +381,30 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
             data[0] = id_unhandled;
             return;
         }
+        if (data[2] == 0x7D) {
+            if (get && data[3] == 255u) {
+                memcpy(&data[3], "LX02", 4);
+                data[7] = 8; // Configured QMK layers
+                data[8] = 6; // Five matrix subzones + frame
+                data[9] = CC_NEXT_TINT_BYTES;
+                data[10] = 4; // Highest supported lighting format.
+                data[11] = cc_matrix_version();
+                return;
+            }
+            const uint8_t offset = data[3], size = data[4];
+            if (size > 0 && size <= 25u && (uint16_t)offset + size <= CC_NEXT_COLOR_BYTES) {
+                uint8_t *tints = (uint8_t *)cc_rgb.matrix_zones + CC_NEXT_TINT_OFFSET;
+                if (get) memcpy(&data[5], tints + offset, size);
+                else {
+                    cc_stage_matrix_zones();
+                    uint8_t *pending = (uint8_t *)cc_pending_matrix_zones + CC_NEXT_TINT_OFFSET;
+                    memcpy(pending + offset, &data[5], size);
+                }
+                return;
+            }
+            data[0] = id_unhandled;
+            return;
+        }
         if (data[2] == 0x7B) {
             if (get) {
                 memcpy(&data[3], "MZ01", 4);
@@ -349,11 +413,17 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
                 data[9] = CC_RGB_FRAME_LED_COUNT;
                 return;
             }
-            if (data[3] == 1 && cc_matrix_transfer && timer_elapsed32(cc_matrix_transfer_at) < 15000u) {
+            const uint8_t version = data[3] == 1 ? cc_matrix_version() : data[3];
+            if (data[3] >= 1 && data[3] <= 4 && cc_matrix_transfer &&
+                timer_elapsed32(cc_matrix_transfer_at) < 15000u &&
+                cc_matrix_zone_data_valid(cc_pending_matrix_zones, version)) {
                 cc_matrix_transfer = false;
                 cc_fix_matrix_map(cc_pending_matrix_map);
                 memcpy(cc_rgb.matrix_zones, cc_pending_matrix_zones, sizeof(cc_rgb.matrix_zones));
                 memcpy(cc_rgb.zone_map, cc_pending_matrix_map, sizeof(cc_rgb.zone_map));
+                if (data[3] == 2) memcpy(cc_rgb.zone_magic, "MZ02", 4);
+                if (data[3] == 3) memcpy(cc_rgb.zone_magic, "MZ03", 4);
+                if (data[3] == 4) memcpy(cc_rgb.zone_magic, "MZ04", 4);
                 eeconfig_update_user_datablock(&cc_rgb, 0, sizeof(cc_rgb));
                 return;
             }

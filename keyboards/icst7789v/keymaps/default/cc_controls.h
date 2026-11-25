@@ -87,8 +87,8 @@ static void cc_internal_press(uint8_t index) {
             case 1: cc_internal_mode = 0; cc_open_layer_list(); break;
             case 2: cc_internal_mode = 0; cc_matrix_test_enter(); break;
             case 3:
-                cc_backlight_awake = !cc_backlight_awake;
-                gpio_write_pin(LCD_BL, cc_backlight_awake);
+                cc_display_light_on = !cc_display_light_on;
+                cc_display_backlight_apply(cc_backlight_awake);
                 break;
             case 4: cc_menu_back(); break;
         }
@@ -204,6 +204,8 @@ static void cc_encoder_press_action(void) {
     }
     if (cc_screen_selection == CC_SCREEN_LAYERS) {
         cc_activate_layer(cc_preview);
+    } else if (omp_enabled) {
+        omp_tap(omp_profile.layers[cc_active].keys[10].codes[0]);
     } else {
         uint16_t kc = cc_layers[cc_active].encoder_press;
         if (kc == MS_BTN1) cc_mouse_left_click();
@@ -281,6 +283,7 @@ void keyboard_post_init_user(void) {
     cc_home_view = false; // Active layer map at every startup.
     cc_screen_selection = CC_SCREEN_DETAILS;
     lcd_init(); // Known-good GPIO bootstrap then QMK HW SPI.
+    cc_display_backlight_init();
     cc_adxl_init(); // No I2C pin ownership unless enabled after matrix relocation.
     cc_dirty = true;
 }
@@ -418,19 +421,72 @@ layer_state_t layer_state_set_user(layer_state_t state) {
     return state;
 }
 
+enum { CC_LIGHT_K5 = 1u, CC_LIGHT_K9 = 2u, CC_LIGHT_K10 = 4u };
+static const uint8_t cc_light_keys[] = {4, 8, 9};
+static uint8_t cc_light_pending, cc_light_suppressed;
+static bool cc_light_push_active, cc_light_turn_release;
+
+static bool cc_light_action(bool push, bool clockwise) {
+    uint8_t keys = 0;
+    for (uint8_t i = 0; i < ARRAY_SIZE(cc_light_keys); ++i) {
+        const uint8_t key = cc_light_keys[i];
+        if (matrix_get_row(cc_matrix_row[key]) & (1u << cc_matrix_col[key])) keys |= 1u << i;
+    }
+    if (!(keys & CC_LIGHT_K9) || !(keys & (CC_LIGHT_K5 | CC_LIGHT_K10))) return false;
+    cc_light_suppressed |= cc_light_pending & keys;
+    cc_light_pending &= ~keys;
+    cc_k9_chord = true;
+    cc_k9_armed = false;
+    cc_k9_second = false;
+    if (keys == (CC_LIGHT_K5 | CC_LIGHT_K9)) {
+        if (push) cc_display_light_on = !cc_display_light_on;
+        else cc_display_level = cc_adjust_level(cc_display_level, clockwise);
+        cc_ui_activity();
+        cc_display_backlight_apply(true);
+    } else if (keys == (CC_LIGHT_K9 | CC_LIGHT_K10)) {
+        if (push) cc_rgb_master_enabled = !cc_rgb_master_enabled;
+        else cc_led_level = cc_adjust_level(cc_led_level, clockwise);
+        rgblight_driver.flush();
+        cc_main_dirty = cc_frame_dirty = true;
+        cc_dirty = true;
+    }
+    return true;
+}
+
+static bool cc_light_encoder_push(void) {
+    if (cc_encoder_button.stable) {
+        const bool consumed = cc_light_push_active;
+        cc_light_push_active = false;
+        return consumed;
+    }
+    cc_light_push_active = cc_k0.stable && cc_light_action(true, false);
+    return cc_light_push_active;
+}
+
 void matrix_scan_user(void) {
     static bool combo_latched;
     const bool k0_changed = cc_button_update(&cc_k0, K0_SW);
     const bool encoder_changed = cc_button_update(&cc_encoder_button, ENCODER_SW);
+    const bool lighting_push = encoder_changed && cc_light_encoder_push();
     if (k0_changed) {
         cc_tester_record(CC_SIGNAL_K0, 0, !cc_k0.stable);
-        if (!cc_k0.stable) omp_react(OMP_ZONE_K0);
+        if (!cc_k0.stable) {
+            cc_live_presses |= 1u << 11;
+            cc_next_trigger(CC_NEXT_K0);
+            omp_react(OMP_ZONE_K0);
+        }
     }
     if (encoder_changed) {
         cc_tester_record(CC_SIGNAL_ENCODER_PUSH, 0, !cc_encoder_button.stable);
-        if (!cc_encoder_button.stable) omp_react(OMP_ZONE_ENCODER);
+        if (!cc_encoder_button.stable) {
+            cc_live_presses |= 1u << 10;
+            if (!lighting_push) {
+                cc_next_trigger(CC_NEXT_ENCODER_PUSH);
+                omp_react(OMP_ZONE_ENCODER);
+            }
+        }
     }
-    if (!cc_k0.stable && !cc_encoder_button.stable) {
+    if (!cc_k0.stable && !cc_encoder_button.stable && !cc_light_push_active) {
         if (!combo_latched) {
             combo_latched = true;
             if (omp_enabled) omp_release_all();
@@ -472,10 +528,12 @@ void matrix_scan_user(void) {
         return;
     }
     cc_k0_update(k0_changed);
-    if (encoder_changed) cc_encoder_button_action();
+    if (encoder_changed && !lighting_push) cc_encoder_button_action();
 }
 
 static bool cc_encoder_rotate(bool clockwise) {
+    cc_light_turn_release = cc_k0.stable && cc_light_action(false, clockwise);
+    if (cc_light_turn_release) return false;
     if (cc_matrix_test_view) {
         cc_tester_record(CC_SIGNAL_ENCODER_TURN, clockwise, 0);
         if (clockwise) ++cc_detect_clockwise;
@@ -484,7 +542,7 @@ static bool cc_encoder_rotate(bool clockwise) {
     }
     // Menus own the encoder exclusively, even with an app profile loaded.
     if (!cc_internal_mode && cc_screen_selection != CC_SCREEN_LAYERS && !cc_menu_view)
-        omp_react(OMP_ZONE_ENCODER);
+        { cc_next_trigger(CC_NEXT_ENCODER_TURN); omp_react(OMP_ZONE_ENCODER); }
     if (cc_internal_mode) {
         cc_internal_step(clockwise ? 1 : -1);
     } else if (cc_menu_view) {
@@ -510,56 +568,117 @@ static bool cc_encoder_rotate(bool clockwise) {
     return false;
 }
 
-// ENCODER_MAP_ENABLE delivers rotation as key events instead of calling
-// encoder_update_user. Intercept both edges before QMK sends a host keycode.
-bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
-    (void)keycode;
-    if (IS_KEYEVENT(record->event)) {
-        const uint8_t row = record->event.key.row, col = record->event.key.col;
-        if (record->event.pressed) cc_ui_activity();
-        if (cc_k9_down && record->event.pressed && !(row == 2 && col == 1))
-            cc_k9_chord = true;
-        if (cc_nav_alt_down && record->event.pressed) {
-            unregister_code(KC_LALT);
-            cc_nav_alt_down = false;
+static bool cc_matrix_key_event(uint8_t row, uint8_t col, bool pressed) {
+    if (pressed) cc_ui_activity();
+    if (cc_k9_down && pressed && !(row == 2 && col == 1))
+        cc_k9_chord = true;
+    if (cc_nav_alt_down && pressed) {
+        unregister_code(KC_LALT);
+        cc_nav_alt_down = false;
+    }
+    if (cc_matrix_test_view && !cc_internal_mode) {
+        cc_matrix_test_record(row, col, pressed);
+        return false;
+    }
+    for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
+        if (cc_matrix_row[i] != row || cc_matrix_col[i] != col) continue;
+        if (cc_ui_menu_key(i, pressed)) return false;
+        if (pressed) {
+            cc_next_trigger(CC_NEXT_KEY);
+            omp_react(OMP_ZONE_KEYS);
         }
-        if (cc_matrix_test_view && !cc_internal_mode) {
-            cc_matrix_test_record(row, col, record->event.pressed);
+        cc_last_key = pressed ? i : 255;
+        if (!cc_home_view) cc_dirty = true;
+        if (cc_special_key(i, pressed)) return false;
+        // Fixed K5/K9/K10 have priority over profile and fallback
+        // gestures. K9 is physically wired at row 2, column 1.
+        if (cc_handle_fixed_modifier(row, col, pressed)) return false;
+        if (omp_enabled) {
+            // Exactly one gesture engine can own an event. The former
+            // ordering sent K1-K8 through cc_td_event and silently
+            // bypassed saved OmniPad Tap Dance / multi-slot actions.
+            omp_key_event(i, pressed);
             return false;
         }
-        for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
-            if (cc_matrix_row[i] != row || cc_matrix_col[i] != col) continue;
-            if (cc_ui_menu_key(i, record->event.pressed)) return false;
-            if (record->event.pressed) omp_react(OMP_ZONE_KEYS);
-            cc_last_key = record->event.pressed ? i : 255;
-            if (!cc_home_view) cc_dirty = true;
-            if (cc_special_key(i, record->event.pressed)) return false;
-            // Fixed K5/K9/K10 have priority over profile and fallback
-            // gestures. K9 is physically wired at row 2, column 1.
-            if (cc_handle_fixed_modifier(row, col, record->event.pressed)) return false;
-            if (omp_enabled) {
-                // Exactly one gesture engine can own an event. The former
-                // ordering sent K1-K8 through cc_td_event and silently
-                // bypassed saved OmniPad Tap Dance / multi-slot actions.
-                omp_key_event(i, record->event.pressed);
-                return false;
+        if (cc_td_event(i, pressed)) return false;
+        // All other keys also use the factory map, never stale VIA EEPROM.
+        if (!omp_enabled) {
+            const uint16_t factory_code = cc_layers[cc_active].taps[i];
+            if (factory_code != KC_NO && factory_code != KC_TRNS) {
+                if (pressed) register_code16(factory_code);
+                else unregister_code16(factory_code);
             }
-            if (cc_td_event(i, record->event.pressed)) return false;
-            // All other keys also use the factory map, never stale VIA EEPROM.
-            if (!omp_enabled) {
-                const uint16_t factory_code = cc_layers[cc_active].taps[i];
-                if (factory_code != KC_NO && factory_code != KC_TRNS) {
-                    if (record->event.pressed) register_code16(factory_code);
-                    else unregister_code16(factory_code);
-                }
-                return false;
-            }
+            return false;
+        }
+        break;
+    }
+    return true;
+}
+
+static bool cc_light_immediate_modifier(uint8_t key) {
+    if (cc_on_menu_screen() || cc_active == CC_MACRO_LAYER || cc_active == CC_RGB_LAYER)
+        return false;
+    if (key == 4) return true; // K5 keeps its normal, immediate Shift behavior.
+    if (key == 8) return cc_active != CC_TEXT_LAYER && cc_active != 4;
+    return cc_active != CC_TEXT_LAYER && (cc_active != 4 || omp_enabled);
+}
+
+static bool cc_route_matrix_key(uint8_t row, uint8_t col, bool pressed) {
+    for (uint8_t i = 0; i < CC_KEY_COUNT; ++i) {
+        if (cc_matrix_row[i] == row && cc_matrix_col[i] == col && pressed) {
+            cc_live_presses |= 1u << i;
             break;
         }
-        return true;
     }
+    for (uint8_t i = 0; i < ARRAY_SIZE(cc_light_keys); ++i) {
+        const uint8_t key = cc_light_keys[i];
+        if (cc_matrix_row[key] != row || cc_matrix_col[key] != col) continue;
+        const uint8_t mask = 1u << i;
+        if (!pressed && (cc_light_suppressed & mask)) {
+            cc_light_suppressed &= ~mask;
+            return false;
+        }
+        if (!pressed && (cc_light_pending & mask)) {
+            cc_light_pending &= ~mask;
+            const bool text_key = cc_active == CC_TEXT_LAYER &&
+                                  (key == 8 || (key == 9 && !omp_enabled)) &&
+                                  !cc_on_menu_screen();
+            cc_matrix_key_event(row, col, true);
+            if (text_key) wait_ms(8);
+            cc_matrix_key_event(row, col, false);
+            return false;
+        }
+        // Delay alternate actions such as Space, macro recording and screenshots
+        // until release, so holding the chord cannot run them by accident.
+        if (pressed && !cc_matrix_test_view && !cc_light_immediate_modifier(key)) {
+            cc_light_pending |= mask;
+            return false;
+        }
+        return cc_matrix_key_event(row, col, pressed);
+    }
+    if (pressed && cc_light_pending) {
+        for (uint8_t i = 0; i < ARRAY_SIZE(cc_light_keys); ++i) {
+            const uint8_t key = cc_light_keys[i];
+            if (cc_light_pending & (1u << i))
+                cc_matrix_key_event(cc_matrix_row[key], cc_matrix_col[key], true);
+        }
+        cc_light_pending = 0;
+    }
+    return cc_matrix_key_event(row, col, pressed);
+}
+
+// Encoder-map events must reach the protected controls before any host actions.
+bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
+    (void)keycode;
+    if (IS_KEYEVENT(record->event))
+        return cc_route_matrix_key(record->event.key.row, record->event.key.col,
+                                   record->event.pressed);
     if (!IS_ENCODEREVENT(record->event)) return true;
     if (!record->event.pressed) {
+        if (cc_light_turn_release) {
+            cc_light_turn_release = false;
+            return false;
+        }
         if (cc_internal_mode || cc_active == CC_NAV_LAYER ||
             cc_active == CC_TEXT_LAYER || cc_active == CC_RGB_LAYER ||
             cc_active == CC_MACRO_LAYER) return false;
@@ -601,6 +720,11 @@ static void cc_zoom_slider_update(int16_t sample) {
 }
 
 void housekeeping_task_user(void) {
+    static uint8_t previous_layer = UINT8_MAX;
+    if (previous_layer != cc_active) {
+        if (previous_layer != UINT8_MAX) cc_next_trigger(CC_NEXT_LAYER);
+        previous_layer = cc_active;
+    }
     cc_td_tick();
     cc_nav_alt_tick();
     cc_ui_timeout_tick();
@@ -627,7 +751,9 @@ void housekeeping_task_user(void) {
     static bool master_was_on = true;
     if (omp_preview_active && (cc_matrix_test_view || timer_elapsed(omp_preview_at) >= OMP_LED_PREVIEW_MS))
         omp_preview_active = false;
-    const bool own_leds = omp_preview_active || cc_visual_profile_available;
+    const bool live_preview = cc_live_preview_enabled();
+    const bool own_leds = live_preview || omp_preview_active || cc_visual_profile_available ||
+        cc_next_active();
     if (own_leds || !cc_rgb_master_enabled) {
         rgblight_timer_disable();
         qmk_suspended = true;
@@ -643,7 +769,8 @@ void housekeeping_task_user(void) {
             rgblight_driver.flush();
         }
     } else if (!cc_tester_preview_leds()) {
-        if (own_leds) omp_lighting_tick(omp_preview_active);
+        if (live_preview) cc_live_draw();
+        else if (own_leds) omp_lighting_tick(omp_preview_active);
         else cc_rgb_tick();
     }
     master_was_on = cc_rgb_master_enabled;
@@ -658,7 +785,10 @@ void housekeeping_task_user(void) {
             cc_slider_raw = cc_slider_valid ? omp_slider_filter_adc(sample, cc_slider_raw) : (uint16_t)sample;
             const uint16_t value = omp_slider_value(cc_slider_raw);
             cc_slider_pct = ((uint32_t)value * 100u + 511u) / 1023u;
-            if (cc_slider_valid && cc_slider_pct != previous_pct) omp_react(OMP_ZONE_SLIDER);
+            if (cc_slider_valid && cc_slider_pct != previous_pct) {
+                cc_next_trigger(CC_NEXT_SLIDER);
+                omp_react(OMP_ZONE_SLIDER);
+            }
             cc_slider_valid = true;
             if (cc_matrix_test_view || cc_custom_screen_selected()) {
                 if (cc_slider_pct != previous_pct) cc_dirty = true;

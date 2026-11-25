@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from key_actions import BUILTINS, KEY_MODES, LEGACY_EMPTY, LIBRARY_PREFIX, compile_entry, valid_library_id
 
 ROOT = Path(__file__).resolve().parents[1]
 LAYER_DATA = json.loads((ROOT / "design/layer_system.json").read_text(encoding="utf-8"))
@@ -26,11 +27,6 @@ TRIGGERS = ("Tastendruck", "Encoder drehen", "Encoder drücken", "Regler bewegen
             "Zusatzbutton", "Layerwechsel")
 MATRIX_TRIGGER_ZONES = dict(zip(TRIGGERS, ("keys", "encoder", "encoder", "slider", "k0", "display")))
 GESTURES = ("1×", "2×", "3×", "4×", "Halten")
-ACTIONS = ("Unbelegt", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K",
-           "Enter", "Escape", "Tab", "Leertaste", "Zurück", "Entfernen",
-           "Kopieren", "Einfügen", "Ausschneiden", "Rückgängig", "Wiederholen",
-           "Lauter", "Leiser", "Play/Pause", "Nächster Titel", "Vorheriger Titel",
-           "Pfeil hoch", "Pfeil runter", "Pfeil links", "Pfeil rechts")
 PROTECTED = {"K0 lang": "Settings", "K0 3×": "Matrixtester",
              "Encoder lang": "Layerliste"}
 SCREENS = ("active-layer", "layer-list", "matrix-tester", "settings")
@@ -97,7 +93,7 @@ def new_project():
         layers.append({"id": spec["id"], "name": spec["name"], "groups": groups,
                        "led_overrides": {}, "actions": assignments})
     return {"schema": SCHEMA, "active_layer": 1, "layers": layers,
-            "display_templates": {name: "" for name in SCREENS}}
+            "display_templates": {name: "" for name in SCREENS}, "library": []}
 
 
 def valid_color(s):
@@ -138,6 +134,20 @@ def validate(p):
         raise ValueError("Ungültiger aktiver Layer.")
     if not isinstance(p.get("layers"), list) or len(p["layers"]) != len(LAYER_IDS):
         raise ValueError("Das Projekt benötigt alle Firmware-Layer.")
+    ids = set()
+    entries = p.get("library", [])
+    if not isinstance(entries, list):
+        raise ValueError("Ungültige Snippetbibliothek.")
+    for entry in entries:
+        if (not isinstance(entry, dict) or not valid_library_id(entry.get("id")) or entry["id"] in ids
+                or not isinstance(entry.get("name"), str) or not entry["name"].strip()
+                or not (entry.get("kind") == "text" and isinstance(entry.get("text"), str)
+                        or entry.get("kind") == "macro" and isinstance(entry.get("steps"), list)
+                        and all(isinstance(step, list) and len(step) == 2 for step in entry["steps"]))):
+            raise ValueError("Ungültiger Eintrag in der Snippetbibliothek.")
+        compile_entry(entry)
+        ids.add(entry["id"])
+    choices = set(BUILTINS) | {LEGACY_EMPTY} | {LIBRARY_PREFIX + identifier for identifier in ids}
     for i, layer in enumerate(p["layers"]):
         if not isinstance(layer, dict) or layer.get("id") != LAYER_IDS[i]:
             raise ValueError("Layer-Reihenfolge ist ungültig.")
@@ -156,11 +166,19 @@ def validate(p):
                 raise ValueError(f"Ungültige Einzel-LED {key}.")
         if not isinstance(layer.get("actions"), dict):
             raise ValueError("App-Tasten fehlen.")
-        if any(k in PROTECTED for k in layer["actions"]):
+        if any(k in PROTECTED or k == "K0" for k in layer["actions"]):
             raise ValueError("Systemgesten sind fest reserviert.")
+        modes = layer.get("key_modes", {})
+        if not isinstance(modes, dict) or any(
+            name not in {f"K{i}" for i in range(1, 11)} or mode not in KEY_MODES
+            for name, mode in modes.items()
+        ):
+            raise ValueError("Ungültiger Modus für eine Taste.")
         for gestures in layer["actions"].values():
-            if not isinstance(gestures, dict) or any(k not in GESTURES or v not in ACTIONS
-                                                       for k, v in gestures.items()):
+            if not isinstance(gestures, dict) or any(
+                k not in GESTURES or not isinstance(v, str) or v not in choices
+                for k, v in gestures.items()
+            ):
                 raise ValueError("Ungültige App-Belegung.")
     if not isinstance(p.get("display_templates"), dict) or set(p["display_templates"]) != set(SCREENS):
         raise ValueError("Display-Vorlagen fehlen.")
@@ -182,6 +200,7 @@ def save_project(p, path):
 def load_project(path):
     with Path(path).open("r", encoding="utf-8") as f:
         project = validate(json.load(f))
+    project.setdefault("library", [])
     for layer in project["layers"]:
         for group in BASE_GROUPS:
             light = layer["groups"][group]

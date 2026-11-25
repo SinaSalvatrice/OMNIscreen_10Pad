@@ -10,6 +10,8 @@ static uint32_t omp_light_timer;
 static uint32_t omp_light_reaction_at[OMP_MATRIX_ZONE_COUNT];
 static uint8_t omp_light_reaction_mask;
 
+#include "cc_lighting_next.h"
+
 static void omp_react(uint8_t zone) {
     if (!cc_rgb_master_enabled || cc_matrix_test_view ||
         !(omp_preview_active || cc_visual_profile_available)) return;
@@ -89,6 +91,10 @@ static bool omp_native_lighting(uint16_t code, bool pressed) {
 static void omp_lighting_tick(bool preview) {
     if (timer_elapsed32(omp_light_timer) < 20u) return;
     omp_light_timer = timer_read32();
+    if (!preview && cc_next_active()) {
+        cc_next_lighting_tick(omp_light_timer);
+        return;
+    }
     const uint8_t layer = cc_active < omp_profile.layer_count ? cc_active : omp_profile.default_layer;
     const omp_zone_t *zones = preview ? omp_preview_zones : omp_profile.layers[layer].zones;
     const bool reactive = zones[0].flags & OMP_LIGHT_REACTIVE;
