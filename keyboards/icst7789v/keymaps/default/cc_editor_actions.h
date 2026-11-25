@@ -68,12 +68,13 @@ static void omp_emit(uint16_t code, bool pressed) {
     if (IS_QK_MODS(code)) {
         const uint8_t key = QK_MODS_GET_BASIC_KEYCODE(code);
         const uint8_t mods = omp_mod_mask(code);
-        if (pressed) {
-            omp_mod_update(mods, true);
-            if (key != KC_NO) register_code(key);
-        } else {
-            if (key != KC_NO) unregister_code(key);
-            omp_mod_update(mods, false);
+        // Send the key and its modifiers in the same keyboard report.
+        const bool changed = omp_mod_change(mods, pressed);
+        if (key != KC_NO) {
+            if (pressed) register_code(key);
+            else unregister_code(key);
+        } else if (changed) {
+            send_keyboard_report();
         }
         return;
     }

@@ -31,7 +31,6 @@ static bool cc_use_app_profile = false; // persisted config source
 static bool cc_visual_profile_available = false; // templates work in firmware mode
 static bool cc_rgb_master_enabled = true; // persisted RGB power
 static void cc_internal_press(uint8_t index);
-static void cc_next_trigger(uint8_t mask);
 static void cc_user_layer_change(uint8_t from, uint8_t to);
 static bool cc_help_view = false;
 static bool cc_color_view = false;
@@ -128,10 +127,8 @@ static void cc_activate_layer(uint8_t layer_index) {
         cc_user_layer_change(cc_active, layer_index);
         cc_previous = cc_active;
     }
-    const bool changed_layer = cc_active != layer_index;
     cc_active = layer_index;
     cc_preview = layer_index;
-    if (changed_layer) cc_next_trigger(32u); // Layerwechsel, including menu selection
     cc_home_view = false; // The active layer map IS the home view.
     cc_display_mode = false;
     cc_screen_selection = CC_SCREEN_DETAILS;
@@ -214,7 +211,8 @@ static void cc_background(const char *footer, uint16_t footer_color) {
     cc_draw_text(7, 9, "CC / OMNIPAD", 1, C_WHITE);
     const char *view_label = cc_matrix_test_view ? "TEST" :
                              cc_internal_mode ? "MENU" :
-                             cc_screen_selection == CC_SCREEN_LAYERS ? "LIST" : "MAP";
+                             cc_screen_selection == CC_SCREEN_LAYERS ? "LIST" :
+                             omp_enabled ? "APP MAP" : "FW MAP";
     cc_draw_text(270, 9, view_label, 1, cc_view_accent());
     if (footer) cc_draw_text(7, 225, footer, 1, footer_color);
 }
@@ -227,9 +225,8 @@ static void cc_layer_key_tile(uint8_t i, uint8_t selected, const cc_layer_desc_t
     const uint16_t y = shape->y;
     const uint16_t w = shape->w;
     const uint16_t h = shape->h;
-    // The screen must not pretend that a VIA-edited key still has its preset.
-    const char *label = desc->labels[i];
-    if (omp_enabled) label = omp_profile.layers[selected].keys[i].label;
+    const omp_key_t *key = omp_enabled ? &omp_profile.layers[selected].keys[i] : NULL;
+    const char *label = key ? key->label : desc->labels[i];
     const bool highlight = cc_last_key == i;
     lcd_fill(x, y, w, h, highlight ? 0x3A90 : 0x29E8);
     lcd_fill(x, y, w, 2, highlight ? accent : 0x426A);
@@ -240,12 +237,30 @@ static void cc_layer_key_tile(uint8_t i, uint8_t selected, const cc_layer_desc_t
     } else {
         cc_draw_text(x + 10, y + 5, "10", 1, 0xAD75);
     }
-    // Shorten long layer names inside 43-pixel single-key tiles.
-    char short_label[6] = {0};
-    for (uint8_t j = 0; j < 5 && label[j]; ++j) {
-        short_label[j] = label[j];
+    if (key && key->mode) {
+        cc_draw_text(x + w - 22, y + 5, key->mode == 1 ? "TD" : "SEQ", 1, accent);
     }
-    cc_draw_text(x + 5, y + (h / 2u), short_label, 1, C_WHITE);
+    const uint8_t columns = MIN(11u, (w - 8u) / 6u);
+    const uint8_t length = MIN(strlen(label), 11u);
+    uint8_t first = MIN(columns, length);
+    if (length > columns) {
+        for (uint8_t i = first; i > 0; --i) {
+            if (label[i] == ' ') {
+                first = i;
+                break;
+            }
+        }
+    }
+    char line[12] = {0};
+    memcpy(line, label, first);
+    const uint16_t top = y + h / 2u;
+    cc_draw_text(x + 5, top, line, 1, C_WHITE);
+    if (length > first) {
+        const char *rest = label + first + (label[first] == ' ');
+        memset(line, 0, sizeof(line));
+        memcpy(line, rest, MIN(strlen(rest), columns));
+        cc_draw_text(x + 5, top + 10, line, 1, C_WHITE);
+    }
 }
 
 // Renderers for distinct protected system screens. The settings/tester
@@ -292,13 +307,14 @@ static void cc_navigation_screen(void) {
 
 static void cc_layer_screen(bool full_redraw) {
     static uint8_t drawn_layer, drawn_active, drawn_key = UINT8_MAX;
-    static bool drawn_display_mode;
+    static bool drawn_display_mode, drawn_app;
     static uint32_t drawn_generation;
     const uint8_t selected = cc_preview;
     const cc_layer_desc_t *desc = &cc_layers[selected < CC_LAYER_COUNT ? selected : 0];
     const uint16_t accent = cc_visual_profile_available ? cc_view_accent() : desc->accent_rgb565;
     if (full_redraw || selected != drawn_layer || cc_active != drawn_active ||
-        cc_display_mode != drawn_display_mode || omp_generation != drawn_generation) {
+        cc_display_mode != drawn_display_mode || omp_enabled != drawn_app ||
+        omp_generation != drawn_generation) {
         cc_background(cc_default_footer, cc_view_accent());
         lcd_fill(7, 33, 109, 171, 0x2186);
         lcd_fill(7, 33, 109, 4, accent);
@@ -310,6 +326,7 @@ static void cc_layer_screen(bool full_redraw) {
         drawn_layer = selected;
         drawn_active = cc_active;
         drawn_display_mode = cc_display_mode;
+        drawn_app = omp_enabled;
         drawn_generation = omp_generation;
     } else if (cc_last_key != drawn_key) {
         if (drawn_key < CC_KEY_COUNT) cc_layer_key_tile(drawn_key, selected, desc, accent);

@@ -196,6 +196,12 @@ class Usb:
             data.extend(reply[6:6 + size])
         return bytes(data)
 
+    def read_active_profile(self):
+        reply = self.exchange((0x08, 0, 0x7C, 255, 0))
+        if reply[5] != 1:
+            raise ProtocolError("Das Pad meldet ein unbekanntes Anzeigeformat.")
+        return bool(reply[6]), reply[8], struct.unpack_from("<I", reply, 10)[0]
+
     def upload_assignments(self, project):
         info = self.exchange((0x08, 0, 0x71))
         if info[3:7] != b"OMP2" or struct.unpack_from("<H", info, 9)[0] != PROFILE_SIZE:
@@ -203,19 +209,32 @@ class Usb:
         generation = struct.unpack_from("<I", info, 11)[0]
         current = self.read_key_profile() if info[7] else None
         payload = profile_with_assignments(project, current, encoder_push=bool(info[16] & 32))
-        if payload == current:
-            return "Belegung auf dem Pad ist bereits aktuell."
-        checksum = 2166136261
-        for value in payload:
-            checksum = ((checksum ^ value) * 16777619) & 0xFFFFFFFF
-        self.exchange(struct.pack("<3BII", 0x07, 0, 0x73, checksum, generation))
-        for offset in range(0, len(payload), 25):
-            chunk = payload[offset:offset + 25]
-            self.exchange(struct.pack("<3BHB", 0x07, 0, 0x74, offset, len(chunk)) + chunk)
-        self.exchange((0x07, 0, 0x75), timeout=12000)
-        if self.read_key_profile() != payload:
-            raise ProtocolError("Die zurückgelesene Belegung stimmt nicht mit dem Projekt überein.")
-        return "Belegung auf dem Pad gespeichert. Bedienmodus am Pad prüfen."
+        updated = payload != current
+        if updated:
+            checksum = 2166136261
+            for value in payload:
+                checksum = ((checksum ^ value) * 16777619) & 0xFFFFFFFF
+            self.exchange(struct.pack("<3BII", 0x07, 0, 0x73, checksum, generation))
+            for offset in range(0, len(payload), 25):
+                chunk = payload[offset:offset + 25]
+                self.exchange(struct.pack("<3BHB", 0x07, 0, 0x74, offset, len(chunk)) + chunk)
+            self.exchange((0x07, 0, 0x75), timeout=12000)
+            if self.read_key_profile() != payload:
+                raise ProtocolError("Die zurückgelesene Belegung stimmt nicht mit dem Projekt überein.")
+            generation = (generation + 1) & 0xFFFFFFFF
+        layer = project["active_layer"]
+        layer_name = project["layers"][layer]["name"]
+        if info[16] & 64:
+            self.exchange(struct.pack("<5BI", 0x07, 0, 0x7C, 1, layer, generation))
+            if self.read_active_profile() != (True, layer, generation):
+                raise ProtocolError("Die Belegung ist gespeichert. Der gewünschte Layer wurde am Pad nicht aktiv.")
+            return f"App-Profil aktiv · Display zeigt {layer_name}"
+        active, active_layer, _ = self.read_active_profile()
+        if not active:
+            return "Belegung gespeichert · am Pad App Profile unter Config Source wählen."
+        if active_layer != layer:
+            return f"Belegung gespeichert · am Pad Layer {layer_name} öffnen."
+        return f"App-Profil aktiv · Display zeigt {layer_name}"
 
     def read_tints(self):
         output = bytearray()

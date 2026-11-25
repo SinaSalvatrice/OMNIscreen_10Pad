@@ -4,8 +4,8 @@ import re
 import struct
 import unicodedata
 
-from key_actions import (BUILTINS, DEFAULT_ACTION, KEY_MODES, LEGACY_EMPTY,
-                         LIBRARY_PREFIX, MACRO_BYTES, MACRO_CODE, MACRO_SLOTS, compile_entry)
+from key_actions import (BUILTINS, DEFAULT_ACTION, DISPLAY_SHORTCUTS, KEY_MODES, LEGACY_EMPTY,
+                         LIBRARY_PREFIX, MACRO_BYTES, MACRO_CODE, MACRO_SLOTS, NO_ACTION, compile_entry)
 from model import GESTURES, LAYER_DATA
 
 PROFILE_SIZE = 6124
@@ -139,6 +139,7 @@ def profile_with_assignments(project, existing=None, *, encoder_push=False):
         else:
             code = BUILTINS[value]
         U16.pack_into(profile, offset, code)
+        return code
 
     for layer, config in enumerate(project["layers"]):
         start = 8 + layer * LAYER_SIZE
@@ -154,21 +155,23 @@ def profile_with_assignments(project, existing=None, *, encoder_push=False):
             factory = KEY.unpack_from(base, offset)
             mode = KEY_MODES.index(modes.get(name, inferred_mode(slots))) if index < 10 else 0
             active = (1, 5, 4)[mode]
-            label = slots.get(GESTURES[0], DEFAULT_ACTION)
-            if label.startswith(LIBRARY_PREFIX):
-                selected = library.get(label.removeprefix(LIBRARY_PREFIX))
-                if selected is None:
-                    raise ValueError("Eine Belegung verweist auf einen fehlenden Bibliothekseintrag.")
-                label = selected["name"]
-            elif label in (LEGACY_EMPTY, DEFAULT_ACTION):
-                label = factory[-1].decode("ascii").rstrip("\0")
-            profile[offset:offset + KEY.size] = KEY.pack(mode, factory[1], 0, 0, 0, 0, 0, packed_text(label, 12))
+            profile[offset:offset + KEY.size] = KEY.pack(mode, factory[1], 0, 0, 0, 0, 0, b"")
+            label = ""
             for slot in range(active):
                 value = slots.get(GESTURES[slot])
                 default = factory[2] if slot == 0 and mode != 2 else 0
                 if value == DEFAULT_ACTION and mode == 1:
                     default = factory[2 + slot]
-                set_action(offset + 3 + 2 * slot, value, default)
+                action_offset = offset + 3 + 2 * slot
+                code = set_action(action_offset, value, default)
+                if not label:
+                    if action_offset in pending:
+                        label = library[pending[action_offset]]["name"]
+                    elif code and value in (None, LEGACY_EMPTY, DEFAULT_ACTION):
+                        label = factory[-1].decode("ascii").rstrip("\0")
+                    elif code and value != NO_ACTION:
+                        label = DISPLAY_SHORTCUTS.get(value, value)
+            profile[offset + KEY.size - 12:offset + KEY.size] = packed_text(label or "-", 12)
         for index, name in enumerate(ROTATION_ACTIONS):
             action = actions.get(name, {}).get("1×", LEGACY_EMPTY)
             if action != LEGACY_EMPTY:

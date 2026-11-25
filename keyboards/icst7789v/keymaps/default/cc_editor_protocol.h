@@ -2,6 +2,8 @@
 #pragma once
 #include "via.h"
 
+static void cc_switch_source(bool use_app, uint8_t target_layer);
+
 // Read the layer names and key labels from the same source as the TFT.
 static void omp_device_layer_report(uint8_t *data) {
     const uint8_t layer = data[3], page = data[4];
@@ -38,9 +40,23 @@ static void omp_device_layer_report(uint8_t *data) {
 }
 
 static bool omp_command(uint8_t *data, uint8_t length) {
-    if (length == 32 && data[0] == id_custom_get_value && data[1] == 0 && data[2] == 0x7C) {
-        omp_device_layer_report(data);
-        return true;
+    if (length == 32 && data[1] == 0 && data[2] == 0x7C) {
+        if (data[0] == id_custom_get_value) {
+            omp_device_layer_report(data);
+            return true;
+        }
+        if (data[0] == id_custom_set_value) {
+            uint32_t expected_generation;
+            memcpy(&expected_generation, &data[5], sizeof(expected_generation));
+            if (data[3] != 1 || !cc_visual_profile_available || data[4] >= omp_profile.layer_count ||
+                expected_generation != omp_generation || cc_matrix_test_view ||
+                cc_reset_state == CC_RESET_HOLDING || cc_eeprom_confirm) {
+                data[0] = id_unhandled;
+            } else {
+                cc_switch_source(true, data[4]);
+            }
+            return true;
+        }
     }
     if (length != 32 || data[1] != 0 ||
         (data[0] != id_custom_get_value && data[0] != id_custom_set_value) ||
@@ -109,7 +125,7 @@ static bool omp_command(uint8_t *data, uint8_t length) {
         data[10] = sizeof(omp_profile) >> 8;
         memcpy(&data[11], &omp_generation, 4);
         data[15] = CC_PCF8575_MATRIX;
-        data[16] = 63; // Previous capabilities plus app profile action on encoder press.
+        data[16] = 127; // Includes selecting the verified app profile and its active layer over USB.
         return true;
     }
     if (id == 0x72 && get && cc_visual_profile_available) {
@@ -147,6 +163,7 @@ static bool omp_command(uint8_t *data, uint8_t length) {
         omp_receiving = false;
         if (omp_received == sizeof(omp_incoming) && omp_profile_valid(&omp_incoming) &&
             omp_checksum(&omp_incoming, sizeof(omp_incoming)) == omp_expected_checksum) {
+            const uint8_t previous_layer = cc_active;
             omp_release_all();
             if (omp_store()) {
                 cc_screen_selection = CC_SCREEN_AUTO;
@@ -154,7 +171,8 @@ static bool omp_command(uint8_t *data, uint8_t length) {
                 cc_visual_profile_available = true;
                 if (!cc_use_app_profile) omp_enabled = false;
                 omp_last_layer = 255; // A replacement profile also resets temporary lighting controls.
-                cc_activate_layer(omp_enabled ? omp_profile.default_layer : 1);
+                cc_activate_layer(previous_layer < omp_layer_count() ? previous_layer :
+                                  omp_enabled ? omp_profile.default_layer : 1);
                 omp_layer_changed();
                 cc_dirty = true;
                 return true;

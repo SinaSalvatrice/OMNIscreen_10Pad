@@ -14,7 +14,7 @@ static uint8_t omp_mod_mask(uint16_t code) {
     return code & QK_RMODS_MIN ? (uint8_t)(bits << 4) : bits;
 }
 
-static void omp_mod_update(uint8_t mask, bool pressed) {
+static bool omp_mod_change(uint8_t mask, bool pressed) {
     uint8_t changed = 0;
     for (uint8_t bit = 0; bit < 8; ++bit) {
         uint8_t flag = (uint8_t)(1u << bit);
@@ -26,10 +26,14 @@ static void omp_mod_update(uint8_t mask, bool pressed) {
             if (!--omp_mod_refs[bit]) changed |= flag;
         }
     }
-    if (!changed) return;
+    if (!changed) return false;
     if (pressed) add_mods(changed);
     else del_mods(changed);
-    send_keyboard_report();
+    return true;
+}
+
+static void omp_mod_update(uint8_t mask, bool pressed) {
+    if (omp_mod_change(mask, pressed)) send_keyboard_report();
 }
 
 static void omp_mod_release_all(void) {

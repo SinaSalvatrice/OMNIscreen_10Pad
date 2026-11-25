@@ -535,8 +535,7 @@ class App:
             return
         if messagebox.askyesno(
             "Belegung auf Pad speichern",
-            "Eigene Belegungen und zugewiesene Snippets/Makros auf das Pad übertragen?\n"
-            "Zum Verwenden am Pad unter Settings → Config Source → App Profile wählen.",
+            "Belegungen, Snippets und Makros auf das Pad übertragen und den gewählten Layer aktivieren?",
             parent=self.root,
         ):
             self.start_upload("Tastenbelegung", assignments=True)
@@ -657,7 +656,7 @@ class App:
         right = self.card(content)
         right.grid(row=0, column=1, sticky="nsew")
         self.upload_button = ttk.Button(
-            right, text="Belegung auf Pad speichern", command=self.upload_keys,
+            right, text="Belegung speichern & aktivieren", command=self.upload_keys,
             state="disabled" if self.usb_busy else "normal")
         self.upload_button.pack(fill="x", pady=(0, 9))
         self.key_panel = tk.Frame(right, bg=PANEL)

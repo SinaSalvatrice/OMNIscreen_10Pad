@@ -50,15 +50,16 @@ static void cc_menu_back(void) {
     }
     cc_dirty = true;
 }
-static void cc_switch_source(bool use_app) {
+static void cc_switch_source(bool use_app, uint8_t target_layer) {
     if (use_app && !cc_visual_profile_available) return;
-    if (omp_enabled) omp_release_all();
+    omp_release_all();
     clear_keyboard();
     cc_use_app_profile = use_app;
     omp_enabled = use_app && cc_visual_profile_available;
     cc_ui_config_save();
-    cc_activate_layer(omp_enabled ? omp_profile.default_layer : 1);
+    if (target_layer >= omp_layer_count()) target_layer = omp_enabled ? omp_profile.default_layer : 1;
     cc_internal_mode = 0;
+    cc_activate_layer(target_layer);
     cc_open_home();
 }
 static void cc_internal_press(uint8_t index) {
@@ -78,8 +79,8 @@ static void cc_internal_press(uint8_t index) {
     if (cc_internal_mode == 3) {
         cc_menu_back();
     } else if (cc_internal_mode == 4) {
-        if (index == 0) cc_switch_source(false);
-        else if (index == 1) cc_switch_source(true);
+        if (index == 0) cc_switch_source(false, UINT8_MAX);
+        else if (index == 1) cc_switch_source(true, UINT8_MAX);
         else cc_menu_back();
     } else if (cc_internal_mode == 2) {
         switch (index) {
@@ -226,13 +227,13 @@ static uint16_t cc_k9_released_at = 0;
 static bool cc_handle_fixed_modifier(uint8_t row, uint8_t col, bool pressed) {
     if (row == 1 && col == 0) {
         if (cc_active == CC_MACRO_LAYER || cc_active == CC_RGB_LAYER) return false;
-        if (pressed) register_code(KC_LSFT); else unregister_code(KC_LSFT);
+        omp_mod_update(MOD_BIT(KC_LSFT), pressed);
         return true;
     }
     if (row == 2 && col == 3) {
         if (cc_active == CC_TEXT_LAYER || cc_active == CC_MACRO_LAYER || cc_active == CC_RGB_LAYER)
             return false;
-        if (pressed) register_code(KC_LALT); else unregister_code(KC_LALT);
+        omp_mod_update(MOD_BIT(KC_LALT), pressed);
         return true;
     }
     if (row != 2 || col != 1) return false;
@@ -248,9 +249,9 @@ static bool cc_handle_fixed_modifier(uint8_t row, uint8_t col, bool pressed) {
         cc_k9_chord = false;
         cc_k9_down = true;
         cc_k9_pressed_at = timer_read();
-        register_code(KC_LCTL);
+        omp_mod_update(MOD_BIT(KC_LCTL), true);
     } else {
-        unregister_code(KC_LCTL);
+        omp_mod_update(MOD_BIT(KC_LCTL), false);
         cc_k9_down = false;
         const bool clean = !cc_k9_chord && timer_elapsed(cc_k9_pressed_at) <= CC_K9_DOUBLE_TAP_MS;
         if (clean && cc_k9_second) {

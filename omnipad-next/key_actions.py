@@ -38,6 +38,13 @@ SHORTCUTS = {
     "Suchen": 0x0100 | LETTERS["F"], "Screenshot": 0x0A16,
     "Fenster wechseln": 0x042B, "Browser zurück": 0xB6, "Browser vor": 0xB7,
 }
+DISPLAY_SHORTCUTS = {
+    "Kopieren": "CTRL C", "Einfügen": "CTRL V", "Ausschneiden": "CTRL X",
+    "Alles auswählen": "CTRL A", "Speichern": "CTRL S", "Rückgängig": "CTRL Z",
+    "Wiederholen": "CTRL Y", "Drucken": "CTRL P", "Suchen": "CTRL F",
+    "Screenshot": "SNIP", "Fenster wechseln": "ALT TAB", "Browser zurück": "WEB BACK",
+    "Browser vor": "WEB NEXT",
+}
 MOUSE = {"Linksklick": 0xD1, "Rechtsklick": 0xD2,
          "Mausrad hoch": 0xDA, "Mausrad runter": 0xDB}
 BUILTINS = {DEFAULT_ACTION: None, NO_ACTION: 0, **LETTERS, **NUMBERS, **FUNCTIONS,

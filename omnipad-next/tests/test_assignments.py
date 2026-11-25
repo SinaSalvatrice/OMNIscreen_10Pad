@@ -19,6 +19,9 @@ class MockDevice(Usb):
         self.profile = None
         self.generation = 0
         self.commits = 0
+        self.active = False
+        self.layer = 1
+        self.features = 32 | 64
 
     def exchange(self, data, *, timeout=4500):
         raw = bytes(data)
@@ -29,7 +32,7 @@ class MockDevice(Usb):
             response[3:7] = b"OMP2"
             response[7] = self.profile is not None
             struct.pack_into("<HI", response, 9, PROFILE_SIZE, self.generation)
-            response[16] = 32
+            response[16] = self.features
         elif cmd == 0x72:
             offset, size = struct.unpack_from("<HB", raw, 3)
             response[6:6 + size] = self.profile[offset:offset + size]
@@ -49,6 +52,15 @@ class MockDevice(Usb):
             self.profile = bytes(self.pending)
             self.generation += 1
             self.commits += 1
+        elif cmd == 0x7C and raw[0] == 7:
+            assert raw[3] == 1 and struct.unpack_from("<I", raw, 5)[0] == self.generation
+            self.active = True
+            self.layer = raw[4]
+        elif cmd == 0x7C:
+            response[5] = 1
+            response[6] = self.active
+            response[8] = self.layer
+            struct.pack_into("<I", response, 10, self.generation)
         else:
             raise AssertionError(cmd)
         return bytes(response)
@@ -87,9 +99,22 @@ class AssignmentsTests(unittest.TestCase):
     def test_upload_uses_transaction_and_verified_readback(self):
         device = MockDevice()
         project = new_project()
-        project["layers"][1]["actions"]["K1"]["1×"] = "Nächster Titel"
-        self.assertIn("gespeichert", device.upload_assignments(project))
+        project["active_layer"] = 2
+        project["layers"][2]["actions"]["K1"]["1×"] = "Fenster wechseln"
+        self.assertIn("Display zeigt NAV", device.upload_assignments(project))
         self.assertEqual(device.commits, 1)
-        self.assertEqual(KEY.unpack_from(device.profile, K1)[2], 0xAB)
-        self.assertIn("bereits aktuell", device.upload_assignments(project))
+        key = KEY.unpack_from(device.profile, K1 + LAYER_SIZE)
+        self.assertEqual(key[2], 0x042B)
+        self.assertEqual(key[-1].rstrip(b"\0"), b"ALT TAB")
+        self.assertEqual(device.read_active_profile(), (True, 2, 1))
+        device.active = False
+        self.assertIn("Display zeigt NAV", device.upload_assignments(project))
+        self.assertTrue(device.active)
         self.assertEqual(device.commits, 1)
+
+    def test_older_firmware_reports_that_the_source_needs_switching(self):
+        device = MockDevice()
+        device.features = 32
+        self.assertIn("Config Source", device.upload_assignments(new_project()))
+        self.assertEqual(device.commits, 1)
+        self.assertFalse(device.active)
